@@ -8,13 +8,16 @@ import { subscribeOnline } from '@/services/connectivity';
 import * as fb from '@/services/firebase';
 import * as loc from '@/services/location';
 import { loadSnapshot, saveSnapshot } from '@/services/offline';
-import { fetchWalkingRoute } from '@/services/routing';
+import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute } from '@/services/routing';
 import type { Group, HazardAlert, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
 
 export const DEMO_MODE = !fb.isFirebaseConfigured;
 
 export interface AppState {
   hydrated: boolean;
+  routingLoading: boolean;
+  routingMessage: string | null;
+  routeIsCached: boolean;
   myUid: string | null;
   myName: string;
   myLocation: LatLng | null;
@@ -34,6 +37,9 @@ type Action =
 
 const initial: AppState = {
   hydrated: false,
+  routingLoading: false,
+  routingMessage: null,
+  routeIsCached: false,
   myUid: null,
   myName: 'Me',
   myLocation: null,
@@ -77,6 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const set = useCallback((patch: Partial<AppState>) => dispatch({ type: 'set', patch }), []);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const beginRouteRequest = useRef(createRouteRequestGuard()).current;
   const lastPublished = useRef<{ coord: LatLng; ts: number } | null>(null);
 
   // 1. Hydrate from disk first so offline launch shows the last-known world.
@@ -92,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           group: snap?.group ?? (DEMO_MODE ? DEMO_GROUP : null),
           members: snap?.members ?? (DEMO_MODE ? DEMO_MEMBERS : []),
           route: snap?.route ?? null,
+          routeIsCached: !!snap?.route,
           tiles: snap?.tiles ?? null,
           lastSyncedAt: snap?.savedAt ?? null,
         },
@@ -174,19 +182,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (g) set({ group: { ...g, ...patch } });
     };
     const routeTo = async (target: Place) => {
-      const from = s().myLocation;
-      if (!from) return;
-      // Offline: keep the cached route if it goes to the same place; otherwise straight line.
-      const route = await fetchWalkingRoute(from, target);
-      set({ route });
+      const isCurrent = beginRouteRequest();
+      const { myLocation: from, route: cached, isOnline } = s();
+      if (!from) {
+        set({ routingLoading: false, routingMessage: 'Waiting for your GPS location.' });
+        return;
+      }
+      const fallback = fallbackRoute(from, target, cached);
+      set({ route: fallback, routeIsCached: !fallback.isStraightLine,
+        routingLoading: isOnline, routingMessage: null });
+      if (!isOnline) {
+        set({ routingMessage: fallback.isStraightLine
+          ? 'Offline — no saved walking route for this destination.' : 'Offline — showing saved walking route.' });
+        return;
+      }
+      try {
+        const route = await fetchWalkingRoute(from, target);
+        if (isCurrent()) set({ route, routeIsCached: false, routingLoading: false });
+      } catch {
+        if (isCurrent()) set({ routingLoading: false, routingMessage: fallback.isStraightLine
+          ? 'Walking route unavailable. Showing straight-line direction; tap Go to retry.'
+          : 'Could not refresh route. Showing saved walking route; tap Go to retry.' });
+      }
     };
     return {
       async setMeetingPlace(coord, name = 'Meeting place') {
         const place: Place = { id: 'meet', name, coord, type: 'meeting' };
         updateGroup({ meetingPlace: place });
         const g = s().group;
-        if (g) await fb.setMeetingPlace(g.id, place);
         await routeTo(place);
+        if (g) await fb.setMeetingPlace(g.id, place);
       },
       async addSafeArea(coord, name) {
         const place: Place = { id: `safe-${Date.now()}`, name, coord, type: 'custom' };
@@ -235,7 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ tiles });
       },
     };
-  }, [set]);
+  }, [set, beginRouteRequest]);
 
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
 }
