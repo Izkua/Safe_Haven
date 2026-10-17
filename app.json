@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "SafeHaven",
+    "slug": "safehaven",
+    "scheme": "safehaven",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.dubhacks.safehaven",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SafeHaven shows your position on the map and shares it with your group during emergencies.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "In emergency mode SafeHaven keeps sharing your location with your group in the background.",
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SafeHaven shows your position on the map and shares it with your group during emergencies.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-notifications"
+    ]
+  }
+}

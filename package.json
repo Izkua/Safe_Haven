@@ -1,0 +1,54 @@
+{
+  "name": "safehaven",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
+    "@types/jest": "30.0.0",
+    "@types/react": "~19.3.0",
+    "expo": "~58.0.14",
+    "expo-constants": "~58.0.12",
+    "expo-file-system": "~58.0.9",
+    "expo-linking": "~58.0.13",
+    "expo-location": "~58.0.17",
+    "expo-notifications": "~58.1.5",
+    "expo-router": "~58.0.23",
+    "expo-status-bar": "~58.0.3",
+    "expo-task-manager": "~58.0.12",
+    "firebase": "^12.0.0",
+    "jest": "~30.5.2",
+    "jest-expo": "~58.0.11",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-maps": "1.29.11",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0",
+    "typescript": "~6.0.3"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.5.2",
+    "@types/jest": "^30.0.0",
+    "@types/react": "~19.3.0",
+    "jest": "^30.0.0",
+    "jest-expo": "~58.0.11",
+    "typescript": "~6.0.3"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
+  },
+  "overrides": {
+    "react-dom": "19.3.0"
+  }
+}

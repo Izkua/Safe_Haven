@@ -1,0 +1,85 @@
+// Shared contracts. Every area codes against these types, so announce changes
+// in the team chat before editing (see README "Contracts").
+
+export type LatLng = { latitude: number; longitude: number };
+
+export type MemberStatus = 'safe' | 'need_help' | 'unknown';
+
+export interface Member {
+  uid: string;
+  name: string;
+  location: LatLng | null;
+  /** ms epoch of `location`; used to grey out stale pins offline */
+  locationTs: number | null;
+  status: MemberStatus;
+}
+
+export type PlaceType = 'meeting' | 'shelter' | 'hospital' | 'open_area' | 'custom';
+
+export interface Place {
+  id: string;
+  name: string;
+  coord: LatLng;
+  type: PlaceType;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  /** 6-char code others type to join */
+  inviteCode: string;
+  memberIds: string[];
+  meetingPlace: Place | null;
+  safeAreas: Place[];
+}
+
+export interface Route {
+  targetId: string;
+  targetName: string;
+  from: LatLng;
+  to: LatLng;
+  points: LatLng[];
+  distanceM: number;
+  durationS: number;
+  fetchedAt: number;
+  /** true when we couldn't reach a routing API and drew a straight line */
+  isStraightLine: boolean;
+}
+
+export type AlertSource = 'nws' | 'usgs' | 'simulated';
+export type AlertSeverity = 'extreme' | 'severe' | 'moderate' | 'minor' | 'unknown';
+
+export interface HazardAlert {
+  id: string;
+  source: AlertSource;
+  title: string;
+  description: string;
+  instruction: string | null;
+  severity: AlertSeverity;
+  /** outer rings of affected polygons, if the feed gives them */
+  areas: LatLng[][];
+  center: LatLng | null;
+  issuedAt: number;
+  expiresAt: number | null;
+}
+
+export interface TileRegion {
+  center: LatLng;
+  radiusKm: number;
+  minZoom: number;
+  maxZoom: number;
+  tileCount: number;
+  downloadedAt: number;
+}
+
+/** Everything we need to keep guiding the user with zero network. */
+export interface OfflineSnapshot {
+  version: 1;
+  myUid: string | null;
+  myName: string;
+  group: Group | null;
+  members: Member[];
+  route: Route | null;
+  tiles: TileRegion | null;
+  savedAt: number;
+}
