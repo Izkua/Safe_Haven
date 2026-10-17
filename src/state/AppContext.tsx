@@ -117,6 +117,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => subscribeOnline((isOnline) => set({ isOnline })), [set]);
 
   // 3. Foreground location + throttled publish.
+  const publishIfDue = useCallback((coord: LatLng) => {
+    const { myUid, isOnline } = stateRef.current;
+    if (!myUid || !isOnline || !loc.shouldPublish(lastPublished.current, coord)) return;
+    lastPublished.current = { coord, ts: Date.now() };
+    fb.publishLocation(myUid, coord).catch(() => {});
+  }, []);
   useEffect(() => {
     let stop: (() => void) | undefined;
     (async () => {
@@ -126,15 +132,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       stop = await loc.startForegroundWatch((coord) => {
         set({ myLocation: coord });
-        const uid = stateRef.current.myUid;
-        if (uid && stateRef.current.isOnline && loc.shouldPublish(lastPublished.current, coord)) {
-          lastPublished.current = { coord, ts: Date.now() };
-          fb.publishLocation(uid, coord).catch(() => {});
-        }
+        publishIfDue(coord);
       });
     })();
     return () => stop?.();
-  }, [set]);
+  }, [set, publishIfDue]);
+  // The first GPS fix can arrive before sign-in finishes (or while offline): publish once we can.
+  useEffect(() => {
+    const coord = stateRef.current.myLocation;
+    if (coord) publishIfDue(coord);
+  }, [state.myUid, state.isOnline, publishIfDue]);
+  // The watch only fires after movement, so a phone standing still would never re-publish.
+  // Heartbeat checks a few times per interval so the max-interval publish isn't skipped by timer drift.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const coord = stateRef.current.myLocation;
+      if (coord) publishIfDue(coord);
+    }, loc.PUBLISH_MAX_INTERVAL_MS / 4);
+    return () => clearInterval(id);
+  }, [publishIfDue]);
 
   // 4. Live group + members (no-op in demo mode until [SYNC] implements firebase.ts).
   const groupId = state.group?.id;
