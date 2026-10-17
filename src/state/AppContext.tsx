@@ -69,8 +69,9 @@ export interface AppActions {
   routeToBestTarget(): Promise<void>;
   setStatus(status: MemberStatus): Promise<void>;
   setName(name: string): Promise<void>;
-  createGroup(name: string): Promise<void>;
-  joinGroup(code: string): Promise<void>;
+  createGroup(name: string): Promise<boolean>;
+  joinGroup(code: string): Promise<boolean>;
+  leaveGroup(): void;
   triggerAlert(alert: HazardAlert): Promise<void>;
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
@@ -89,8 +90,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 1. Hydrate from disk first so offline launch shows the last-known world.
   useEffect(() => {
     (async () => {
-      const snap = await loadSnapshot();
-      const uid = await fb.ensureSignedIn().catch(() => snap?.myUid ?? null);
+      let snap = await loadSnapshot();
+      // A saved demo group must never shadow the real join/create screen when Firebase is configured.
+      if (!DEMO_MODE && snap?.group?.id === 'demo-group') snap = { ...snap, group: null, members: [] };
+      // Only trust a uid that actually signed in; a stale cached uid means unauthenticated requests.
+      const uid = await fb.ensureSignedIn().catch(() => null);
       dispatch({
         type: 'hydrate',
         patch: {
@@ -115,6 +119,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // 2. Connectivity.
   useEffect(() => subscribeOnline((isOnline) => set({ isOnline })), [set]);
+
+  // 2b. If sign-in failed at launch (offline / flaky Wi-Fi), retry when we're back online.
+  useEffect(() => {
+    if (!state.hydrated || state.myUid || !state.isOnline || DEMO_MODE) return;
+    fb.ensureSignedIn().then((uid) => set({ myUid: uid })).catch(() => {});
+  }, [state.hydrated, state.myUid, state.isOnline, set]);
 
   // 3. Foreground location + throttled publish.
   const publishIfDue = useCallback((coord: LatLng) => {
@@ -155,17 +165,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 4. Live group + members (no-op in demo mode until [SYNC] implements firebase.ts).
   const groupId = state.group?.id;
   const memberKey = state.group?.memberIds.join(',') ?? '';
+  // Gated on myUid: listeners started before sign-in completes are rejected by the rules.
+  const authedUid = state.myUid;
   useEffect(() => {
-    if (!groupId || DEMO_MODE) return;
-    return fb.subscribeGroup(groupId, (group) => set({ group, lastSyncedAt: Date.now() }));
-  }, [groupId, set]);
-  useEffect(() => {
-    if (!memberKey || DEMO_MODE) return;
-    const uid = stateRef.current.myUid;
-    return fb.subscribeMembers(memberKey.split(','), (all) =>
-      set({ members: all.filter((m) => m.uid !== uid), lastSyncedAt: Date.now() }),
+    if (!groupId || !authedUid || DEMO_MODE) return;
+    return fb.subscribeGroup(
+      groupId,
+      (group) => set({ group, lastSyncedAt: Date.now() }),
+      () => set({ group: null, members: [], route: null }), // stale/denied group -> back to join/create
     );
-  }, [memberKey, set]);
+  }, [groupId, authedUid, set]);
+  useEffect(() => {
+    if (!memberKey || !authedUid || DEMO_MODE) return;
+    return fb.subscribeMembers(memberKey.split(','), (all) =>
+      set({ members: all.filter((m) => m.uid !== authedUid), lastSyncedAt: Date.now() }),
+    );
+  }, [memberKey, authedUid, set]);
 
   // 5. Alert polling while online.
   useEffect(() => {
@@ -233,14 +248,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateGroup({ meetingPlace: place });
         const g = s().group;
         await routeTo(place);
-        if (g) await fb.setMeetingPlace(g.id, place);
+        // Not awaited + caught: hangs offline, and a denied write must not be an unhandled rejection.
+        if (g) fb.setMeetingPlace(g.id, place).catch((e) => console.warn('setMeetingPlace', e?.message));
       },
       async addSafeArea(coord, name) {
         const place: Place = { id: `safe-${Date.now()}`, name, coord, type: 'custom' };
         const g = s().group;
         if (!g) return;
         updateGroup({ safeAreas: [...g.safeAreas, place] });
-        await fb.addSafeArea(g.id, place);
+        fb.addSafeArea(g.id, place).catch((e) => console.warn('addSafeArea', e?.message));
       },
       routeTo,
       async routeToBestTarget() {
@@ -252,24 +268,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       async setStatus(status) {
         set({ myStatus: status });
         const uid = s().myUid;
-        if (uid) await fb.publishStatus(uid, status);
+        if (uid) fb.publishStatus(uid, status).catch((e) => console.warn('publishStatus', e?.message));
       },
       async setName(name) {
         set({ myName: name });
         const uid = s().myUid;
-        if (uid) await fb.saveProfile(uid, name);
+        if (uid) fb.saveProfile(uid, name).catch((e) => console.warn('saveProfile', e?.message));
       },
       async createGroup(name) {
         const uid = s().myUid;
-        if (!uid) return;
-        const g = await fb.createGroup(uid, name);
+        if (!uid) return false;
+        const g = await fb.createGroup(uid, name).catch(() => null);
         if (g) set({ group: g });
+        return !!g;
       },
       async joinGroup(code) {
         const uid = s().myUid;
-        if (!uid) return;
-        const g = await fb.joinGroup(uid, code.trim().toUpperCase());
+        if (!uid) return false;
+        const g = await fb.joinGroup(uid, code.trim().toUpperCase()).catch(() => null);
         if (g) set({ group: g });
+        return !!g;
+      },
+      leaveGroup() {
+        set({ group: null, members: [], route: null });
       },
       async triggerAlert(alert) {
         set({ activeAlert: alert });
