@@ -1,94 +1,112 @@
-# SafeHaven 🧭 — DubHacks 2026
+# SafeHaven
 
-Lightweight iOS emergency app: disaster alerts → directions to safety, family location sharing, a shared meeting place, and **guidance that keeps working with no signal**.
+**A lightweight iOS emergency safety app, built for DubHacks 2026.**
 
-Built with Expo (React Native + TypeScript) so we can develop on Windows and test on iPhones with **Expo Go**.
+SafeHaven warns you about nearby natural disasters, points you to a safe area, and keeps your family or friends connected, including when the cell network is down.
 
-## Quick start
+---
+
+## Why SafeHaven?
+
+Apps like Life360 are heavy. They have large binaries, track GPS constantly, and drain the battery. In a disaster they often stop being useful once cell service goes down, which is when you need them most.
+
+SafeHaven puts function first:
+
+- **Light:** a small install that is gentle on the battery.
+- **Focused:** only the features that matter in an emergency.
+- **Offline-capable:** GPS works without cell service, so SafeHaven keeps working without a signal too.
+
+---
+
+## Core Features
+
+### 1. Disaster Alerts and Safe Areas
+Get alerts about natural disasters near you, with directions to the nearest safe area.
+
+### 2. Live Location Sharing
+Share your live location with family and friends so everyone knows where everyone is.
+
+### 3. Group Meeting Place
+Agree on a meeting place ahead of time so the group knows where to regroup when plans fall apart.
+
+### 4. No-Signal Mode
+With no cell service, SafeHaven still shows:
+- A **cached map** of your area
+- Your **current GPS position**
+- Your group's **meeting place**
+- Nearby **safe areas**
+- A **route or compass** that points you to them
+
+---
+
+## Stretch Goals
+
+These come after the core features work:
+
+- [ ] **Groups:** create and manage multiple groups
+- [ ] **UI polish**
+- [ ] **Offline first-aid guides:** CPR, the Heimlich maneuver, and more, available without a connection
+- [ ] **AI photo hazard analysis:** take a photo of your surroundings and get a hazard assessment
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Framework | [Expo](https://expo.dev/) (React Native) |
+| Language | TypeScript |
+| Backend / realtime | Firebase (JS SDK) |
+| Target platform | iOS |
+
+### Why Expo?
+
+The team develops on **Windows** and tests on **iPhones**. Expo lets us build and test iOS apps without a Mac.
+
+**The tradeoff:** an Expo app has a larger binary than a fully native app, around **30–40 MB**. We accept that, and keep the app as small as we can with these rules:
+
+- Use **Expo modules only** for native functionality.
+- Use the **Firebase JS SDK** rather than native Firebase SDKs.
+- **No UI kits or heavy third-party libraries.**
+
+---
+
+## Getting Started
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (LTS)
+- An iPhone with the [Expo Go](https://expo.dev/go) app installed, or a development build (see the note below)
+- A Firebase project
+
+### Setup
 
 ```bash
-# 1. Node 20+ (https://nodejs.org) and the latest Expo Go from the App Store, then:
+# Clone the repo
+git clone <repo-url>
+cd safehaven
+
+# Install dependencies
 npm install
-npx expo install --check    # should say "Dependencies are up to date" (Expo SDK 58)
-cp .env.example .env        # optional — leave blank for DEMO MODE
-npx expo start              # scan the QR with the iPhone Camera → opens in Expo Go
+
+# Start the dev server
+npx expo start
 ```
 
-```bash
-npm test          # geo math unit tests
-npm run typecheck
-```
+Scan the QR code with your iPhone's camera to open the app.
 
-**DEMO MODE:** with no Firebase keys in `.env`, the app loads a mock family and safe areas around UW (`src/mocks/demo.ts`). Everyone can build UI and map features before the backend exists.
+> **Note:** Some features, such as background location, may need a [development build](https://docs.expo.dev/develop/development-builds/introduction/) instead of Expo Go. You can create iOS builds from Windows with [EAS Build](https://docs.expo.dev/build/introduction/).
 
-## How the code is laid out
+### Firebase Configuration
+Add your Firebase project's config to the app's environment (for example, a `.env` file). Don't commit keys to the repo.
 
-```
-app/                       expo-router screens
-  (tabs)/index.tsx         Map ................................. MAP
-  (tabs)/group.tsx         Group / status / create-join ........ UI
-  (tabs)/info.tsx          First aid (stretch) ................. UI
-  alert.tsx                Alert modal → route to safety ....... ALERTS
-  compass.tsx              Offline compass ..................... MAP
-src/
-  types.ts                 ⚠️ SHARED CONTRACTS (see below)
-  state/AppContext.tsx     Single store: hydrate, location, sync, alerts, snapshot persistence
-  lib/geo.ts               distance, bearing, point-in-polygon, tile math (+ tests)
-  services/
-    firebase.ts            Auth + Firestore ....................... SYNC
-    location.ts            GPS, heading, publish throttle .......... SYNC
-    offline.ts             Snapshot to disk ........................ MAP
-    tiles.ts               Offline map tile download ............... MAP
-    routing.ts             Walking route (online → cached) ......... MAP
-    alerts.ts              NWS + USGS + notifications .............. ALERTS
-    connectivity.ts        Online/offline
-  components/              Shared UI ............................... UI
-  mocks/demo.ts            Demo data + simulated alert
-firestore.rules            ............................................ SYNC
-```
+---
 
-Search for `TODO [MAP]`, `TODO [SYNC]`, `TODO [ALERTS]` or `TODO [UI]` to find your work. Every stub already has its final signature and implementation hints, and the app runs end-to-end on mock/stub behavior today.
+## Contributing
 
-## Ownership
+This is a DubHacks 2026 project. Open an issue or pull request, and before adding a dependency, ask whether it's worth the extra size.
 
-| Area | Owner | First milestones |
-|---|---|---|
-| **MAP** — map, offline tiles, routing, compass | _name_ | real walking route in `routing.ts` → tile downloader in `tiles.ts` → airplane-mode test |
-| **SYNC** — Firebase, groups, location sync | _name_ | Firebase project + `.env` → `createGroup`/`joinGroup` → `subscribeGroup`/`subscribeMembers` → `publishLocation` |
-| **ALERTS** — feeds, notifications, safe areas | _name_ | `fetchNwsAlerts` → `fetchUsgsQuakes` → real shelter data for safe areas → EAS dev build (background location + push) |
-| **UI** — screens, onboarding, demo, stretch | _name_ | onboarding (name + permissions) → group screen polish → first-aid content → AI hazard photo (stretch) |
+---
 
-## Contracts (read before editing shared files)
+## Team
 
-- `src/types.ts` is the agreement between all four areas. **Post in team chat before changing it** and update every usage in the same PR.
-- `src/state/AppContext.tsx` is the only place services are wired together. Screens call `useApp()` and never import Firebase directly.
-- Services must **never throw into the UI when offline**. Catch the error and return a fallback (empty list, straight-line route, `null`).
-
-## Git workflow
-
-- `main` must always run. Make a branch per task: `map/tiles`, `sync/groups`, `alerts/nws`, `ui/onboarding`.
-- Open small PRs into `main` and get one teammate to glance at each. Pull `main` often.
-- Don't commit `.env`. Share keys in team chat.
-
-## Lightweight rules (our pitch vs Life360)
-
-- No UI kits, no analytics, no extra map SDKs. Ask before adding any dependency.
-- GPS only while the app is open. Firestore writes are throttled to >100 m moved or 5 minutes passed (`location.ts`).
-- Offline tiles are opt-in and limited to a ~3 km radius.
-
-## Expo Go vs dev build
-
-Everything except **background location** and **remote push** works in Expo Go. For those two: `npm i -g eas-cli && eas build --profile development --platform ios`, which needs an Apple Developer account ($99/year). If we don't have one, we demo with foreground tracking only.
-
-## Demo script
-
-1. Create a family group and have a second phone join it with the invite code.
-2. Long-press the map to set the meeting place. A route appears.
-3. Tap **Simulate**. The alert modal opens; tap "Go to meeting place".
-4. Turn on airplane mode, then kill and relaunch the app. The map tiles, meeting place, route, compass and last-known family pins are all still there.
-
-## Notes
-
-- **Icons:** import `Ionicons from '@expo/vector-icons/Ionicons'`, not `{ Ionicons } from '@expo/vector-icons'`. The barrel import bundles every icon font (+3 MB).
-- **Tests:** TypeScript 6 doesn't add Jest globals automatically, so import them: `import { expect, test } from '@jest/globals'`.
-- `package.json` pins `react-dom` via `overrides` to match Expo's React version. Without it, `npm install` fails with ERESOLVE.
+Built at DubHacks 2026.
