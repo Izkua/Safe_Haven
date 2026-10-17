@@ -1,4 +1,4 @@
-# disaster_prevention# SafeHaven
+# SafeHaven
 
 **A lightweight iOS emergency safety app, built for DubHacks 2026.**
 
