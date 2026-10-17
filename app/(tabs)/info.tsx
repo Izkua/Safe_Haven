@@ -1,5 +1,7 @@
 // [OWNER: UI · STRETCH] Offline first-aid cards. Content must be bundled in the app (no network).
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BigButton } from '@/components/BigButton';
+import { useOnboarding } from '@/components/OnboardingGate';
 import { colors } from '@/theme';
 
 // TODO [UI]: move to src/content/firstAid.json, add CPR / Heimlich / bleeding / burns, with step images.
@@ -9,6 +11,7 @@ const CARDS = [
 ];
 
 export default function InfoScreen() {
+  const { resetOnboarding } = useOnboarding();
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ gap: 12, padding: 16 }}>
       {CARDS.map((c) => (
@@ -19,6 +22,8 @@ export default function InfoScreen() {
           ))}
         </View>
       ))}
+      {/* Dev builds only: re-run onboarding without reinstalling Expo Go. */}
+      {__DEV__ && <BigButton label="Reset onboarding (dev)" variant="secondary" onPress={resetOnboarding} />}
     </ScrollView>
   );
 }
