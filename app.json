@@ -6,14 +6,15 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.dubhacks.safehaven",
       "supportsTablet": false,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "SafeHaven shows your position on the map and shares it with your group during emergencies.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "In emergency mode SafeHaven keeps sharing your location with your group in the background.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "plugins": [
@@ -25,7 +26,8 @@
           "isIosBackgroundLocationEnabled": true
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font"
     ]
   }
 }

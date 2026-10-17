@@ -1,7 +1,7 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import MapView, { LocalTile, Marker, Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
@@ -17,7 +17,7 @@ const STALE_MS = 15 * 60_000;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
-  const { group, members, route, myLocation, isOnline, tiles, activeAlert } = state;
+  const { group, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const mapRef = useRef<MapView>(null);
   const [tileProgress, setTileProgress] = useState<string | null>(null);
 
@@ -92,15 +92,22 @@ export default function MapScreen() {
           <View style={styles.routeCard}>
             <Text style={styles.routeTitle}>→ {route.targetName}</Text>
             <Text style={styles.routeSub}>
-              {formatDistance(route.distanceM)} · ~{Math.round(route.durationS / 60)} min walk
-              {route.isStraightLine ? ' · straight line' : ''}
+              {formatDistance(route.distanceM)}
+              {route.isStraightLine ? ' · Straight-line direction' : ` · ~${Math.max(1, Math.round(route.durationS / 60))} min walk`}
+              {!route.isStraightLine && (routeIsCached || !isOnline) ? ` · Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}` : ''}
             </Text>
+            <Text style={styles.routeSub}>Routes do not account for disaster hazards or guarantee safe passage.</Text>
+            <Text style={styles.routeSub} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>Walking routes: FOSSGIS / OSRM</Text>
+            <Text style={styles.routeSub} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap contributors</Text>
+            <Text style={styles.routeSub} onPress={() => Linking.openURL(`https://www.openstreetmap.org/fixthemap?mlat=${route.to.latitude}&mlon=${route.to.longitude}#map=17/${route.to.latitude}/${route.to.longitude}`)}>Fix the map</Text>
           </View>
         )}
+        {routingLoading && <Text style={styles.demo}>Finding walking route…</Text>}
+        {routingMessage && <Text style={styles.demo}>{routingMessage}</Text>}
       </SafeAreaView>
 
       <View style={styles.actions}>
-        <ActionButton icon="navigate" label="Go" onPress={actions.routeToBestTarget} />
+        <ActionButton icon="navigate" label={routingLoading ? "Routing…" : "Go"} onPress={() => { if (!routingLoading) void actions.routeToBestTarget(); }} />
         <ActionButton icon="compass" label="Compass" onPress={() => router.push('/compass')} />
         <ActionButton icon="cloud-download" label={tileProgress ?? (tiles ? 'Saved' : 'Offline map')} onPress={onDownloadTiles} />
         <ActionButton icon="warning" label="Simulate" color={colors.danger} onPress={() => actions.triggerAlert(makeSimulatedAlert(center))} />
