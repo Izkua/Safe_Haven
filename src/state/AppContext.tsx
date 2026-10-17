@@ -96,6 +96,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           lastSyncedAt: snap?.savedAt ?? null,
         },
       });
+
+      // No saved group (fresh launch, cleared storage): ask Firestore if we already belong to one.
+      if (!DEMO_MODE && uid && !snap?.group) {
+        const g = await fb.findMyGroup(uid);
+        if (g && !stateRef.current.group) dispatch({ type: 'set', patch: { group: g } });
+      }
     })();
   }, []);
 

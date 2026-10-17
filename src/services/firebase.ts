@@ -92,6 +92,35 @@ async function isCodeFree(firestore: Firestore, code: string): Promise<boolean> 
   return snap.empty;
 }
 
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** Firestore network calls can hang with no signal; give up instead of freezing the UI. */
+function withTimeout<T>(p: Promise<T>, ms = 8_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timed out (offline?)')), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * Fire-and-forget write. Firestore applies a write to its local cache right away and queues it
+ * while offline, but the promise it returns only resolves once the SERVER acknowledges. Awaiting
+ * it with no signal would hang the caller forever (e.g. AppContext.setMeetingPlace would never
+ * reach routeTo()). Offline is normal here: log failures, never throw into the UI.
+ */
+function fire(what: string, p: Promise<unknown>): void {
+  p.catch((e) => console.warn(`${what} failed:`, errMsg(e)));
+}
+
 function toGroup(id: string, d: DocumentData): Group {
   return {
     id,
@@ -123,40 +152,77 @@ function toMember(uid: string, d: DocumentData): Member {
 export async function saveProfile(uid: string, name: string): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  await setDoc(doc(firestore, 'users', uid), { name }, { merge: true });
+  fire('saveProfile', setDoc(doc(firestore, 'users', uid), { name }, { merge: true }));
 }
 
-/** Creates groups/{auto} with a random 6-char inviteCode and the creator as the only member. */
+/**
+ * Creates groups/{auto} with a random 6-char inviteCode and the creator as the only member.
+ * Returns null (and logs) if it can't reach Firestore, so the UI never sees a throw.
+ */
 export async function createGroup(uid: string, name: string): Promise<Group | null> {
   const firestore = getDb();
   if (!firestore) return null;
+  try {
+    let inviteCode = randomCode();
+    for (let i = 0; i < 4; i++) {
+      // If the uniqueness check can't run, carry on: collisions are very unlikely (32^6 codes).
+      const free = await withTimeout(isCodeFree(firestore, inviteCode)).catch(() => true);
+      if (free) break;
+      inviteCode = randomCode();
+    }
 
-  let inviteCode = randomCode();
-  for (let i = 0; i < 4 && !(await isCodeFree(firestore, inviteCode)); i++) inviteCode = randomCode();
-
-  const ref = doc(collection(firestore, 'groups'));
-  const data = { name, inviteCode, memberIds: [uid], meetingPlace: null, safeAreas: [] };
-  await setDoc(ref, data);
-  // Best effort: remember the group on the user doc (also creates users/{uid} if missing).
-  await setDoc(doc(firestore, 'users', uid), { groupIds: arrayUnion(ref.id) }, { merge: true }).catch(() => {});
-  return toGroup(ref.id, data);
+    const ref = doc(collection(firestore, 'groups'));
+    const data = { name, inviteCode, memberIds: [uid], meetingPlace: null, safeAreas: [] };
+    await withTimeout(setDoc(ref, data));
+    // Best effort: remember the group on the user doc (also creates users/{uid} if missing).
+    fire('createGroup:groupIds', setDoc(doc(firestore, 'users', uid), { groupIds: arrayUnion(ref.id) }, { merge: true }));
+    return toGroup(ref.id, data);
+  } catch (e) {
+    console.warn('createGroup failed:', errMsg(e));
+    return null;
+  }
 }
 
-/** Looks up a group by invite code and adds `uid` to memberIds. Returns null for an unknown code. */
+/** Looks up a group by invite code and adds `uid` to memberIds. Returns null for an unknown code or no signal. */
 export async function joinGroup(uid: string, inviteCode: string): Promise<Group | null> {
   const firestore = getDb();
   if (!firestore) return null;
+  try {
+    const code = inviteCode.trim().toUpperCase();
+    const snap = await withTimeout(
+      getDocs(query(collection(firestore, 'groups'), where('inviteCode', '==', code), limit(1))),
+    );
+    const found = snap.docs[0];
+    if (!found) return null;
 
-  const code = inviteCode.trim().toUpperCase();
-  const snap = await getDocs(query(collection(firestore, 'groups'), where('inviteCode', '==', code), limit(1)));
-  const found = snap.docs[0];
-  if (!found) return null;
+    await withTimeout(updateDoc(found.ref, { memberIds: arrayUnion(uid) }));
+    fire('joinGroup:groupIds', setDoc(doc(firestore, 'users', uid), { groupIds: arrayUnion(found.id) }, { merge: true }));
 
-  await updateDoc(found.ref, { memberIds: arrayUnion(uid) });
-  await setDoc(doc(firestore, 'users', uid), { groupIds: arrayUnion(found.id) }, { merge: true }).catch(() => {});
+    const g = toGroup(found.id, found.data());
+    return g.memberIds.includes(uid) ? g : { ...g, memberIds: [...g.memberIds, uid] };
+  } catch (e) {
+    console.warn('joinGroup failed:', errMsg(e));
+    return null;
+  }
+}
 
-  const g = toGroup(found.id, found.data());
-  return g.memberIds.includes(uid) ? g : { ...g, memberIds: [...g.memberIds, uid] };
+/**
+ * Finds a group `uid` already belongs to, for when there's no local snapshot to restore it from.
+ * Null if there isn't one or there's no signal.
+ */
+export async function findMyGroup(uid: string): Promise<Group | null> {
+  const firestore = getDb();
+  if (!firestore) return null;
+  try {
+    const snap = await withTimeout(
+      getDocs(query(collection(firestore, 'groups'), where('memberIds', 'array-contains', uid), limit(1))),
+    );
+    const d = snap.docs[0];
+    return d ? toGroup(d.id, d.data()) : null;
+  } catch (e) {
+    console.warn('findMyGroup failed:', errMsg(e));
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -200,16 +266,20 @@ export function subscribeMembers(memberIds: string[], cb: (m: Member[]) => void)
 // ---------------------------------------------------------------------------
 // Writes. users/{uid} writes use setDoc+merge (not updateDoc) so they succeed even if
 // the profile doc doesn't exist yet, e.g. the first location fix before a name is saved.
+// All of these are fire-and-forget (see `fire`): they return as soon as the write is queued.
 // ---------------------------------------------------------------------------
 
 /** Caller already throttles (see location.shouldPublish). */
 export async function publishLocation(uid: string, coord: LatLng): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  await setDoc(
-    doc(firestore, 'users', uid),
-    { lastLocation: { latitude: coord.latitude, longitude: coord.longitude }, locationTs: Date.now() },
-    { merge: true },
+  fire(
+    'publishLocation',
+    setDoc(
+      doc(firestore, 'users', uid),
+      { lastLocation: { latitude: coord.latitude, longitude: coord.longitude }, locationTs: Date.now() },
+      { merge: true },
+    ),
   );
 }
 
@@ -217,17 +287,17 @@ export async function publishLocation(uid: string, coord: LatLng): Promise<void>
 export async function publishStatus(uid: string, status: MemberStatus): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  await setDoc(doc(firestore, 'users', uid), { status }, { merge: true });
+  fire('publishStatus', setDoc(doc(firestore, 'users', uid), { status }, { merge: true }));
 }
 
 export async function setMeetingPlace(groupId: string, place: Place): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  await updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place });
+  fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));
 }
 
 export async function addSafeArea(groupId: string, place: Place): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  await updateDoc(doc(firestore, 'groups', groupId), { safeAreas: arrayUnion(place) });
+  fire('addSafeArea', updateDoc(doc(firestore, 'groups', groupId), { safeAreas: arrayUnion(place) }));
 }
