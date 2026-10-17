@@ -105,6 +105,8 @@ Add your Firebase project's config to the app's environment (for example, a `.en
 
 This is a DubHacks 2026 project. Open an issue or pull request, and before adding a dependency, ask whether it's worth the extra size.
 
+📋 **Team members: start with [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md).** It has each person's tasks, the checkpoints, a code map and the demo script.
+
 ---
 
 ## Team
