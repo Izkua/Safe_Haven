@@ -64,6 +64,9 @@ function init() {
 export async function ensureSignedIn(): Promise<string> {
   init();
   if (!auth) return 'me';
+  // Wait for the persisted session to load, otherwise currentUser is null at launch and
+  // listeners/writes can fire before auth is ready (-> "Missing or insufficient permissions").
+  await auth.authStateReady();
   if (auth.currentUser) return auth.currentUser.uid;
   const cred = await signInAnonymously(auth);
   return cred.user.uid;
@@ -229,7 +232,11 @@ export async function findMyGroup(uid: string): Promise<Group | null> {
 // Live listeners (each returns an unsubscribe function)
 // ---------------------------------------------------------------------------
 
-export function subscribeGroup(groupId: string, cb: (g: Group) => void): () => void {
+export function subscribeGroup(
+  groupId: string,
+  cb: (g: Group) => void,
+  onDenied?: () => void,
+): () => void {
   const firestore = getDb();
   if (!firestore) return () => {};
   return onSnapshot(
@@ -237,7 +244,11 @@ export function subscribeGroup(groupId: string, cb: (g: Group) => void): () => v
     (snap) => {
       if (snap.exists()) cb(toGroup(snap.id, snap.data()));
     },
-    (e) => console.warn('subscribeGroup', e.message),
+    (e) => {
+      console.warn('subscribeGroup', e.message);
+      // Saved group we're no longer a member of (new anonymous uid) or that was deleted.
+      if (e.code === 'permission-denied') onDenied?.();
+    },
   );
 }
 
