@@ -64,6 +64,10 @@ export interface HazardAlert {
 }
 
 export interface TileRegion {
+  centers?: LatLng[];
+  pathTemplate?: string;
+  attribution?: string;
+  attributionUrl?: string;
   center: LatLng;
   radiusKm: number;
   minZoom: number;
@@ -74,6 +78,7 @@ export interface TileRegion {
 
 /** Everything we need to keep guiding the user with zero network. */
 export interface OfflineSnapshot {
+  personalMeetingPlace?: Place | null;
   version: 1;
   myUid: string | null;
   myName: string;
