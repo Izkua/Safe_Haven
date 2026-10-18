@@ -26,6 +26,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="alert" options={{ presentation: 'modal', title: 'Emergency Alert' }} />
         <Stack.Screen name="compass" options={{ title: 'Offline Compass' }} />
+        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Simulate a Disaster' }} />
       </Stack.Protected>
     </Stack>
   );

@@ -9,7 +9,6 @@ import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { formatAge, formatDistance } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
-import { makeSimulatedAlert } from '@/services/alerts';
 import { downloadRegion, planTiles, tileConfigurationError, localTilePath, ONLINE_TILE_URL, TILE_ATTRIBUTION } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, memberColor } from '@/theme';
@@ -143,7 +142,7 @@ export default function MapScreen() {
         <ActionButton icon="navigate" label={routingLoading ? "Routing…" : "Go"} onPress={() => { if (!routingLoading) void actions.routeToBestTarget(); }} />
         <ActionButton icon="compass" label="Compass" onPress={() => router.push('/compass')} />
         <ActionButton icon="cloud-download" label={tileProgress ?? (tiles ? 'Saved' : 'Offline map')} onPress={onDownloadTiles} />
-        <ActionButton icon="warning" label="Simulate" color={colors.danger} onPress={() => actions.triggerAlert(makeSimulatedAlert(center))} />
+        <ActionButton icon="warning" label="Simulate" color={colors.danger} onPress={() => router.push('/simulate')} />
       </View>
     </View>
   );

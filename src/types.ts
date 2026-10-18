@@ -47,11 +47,14 @@ export interface Route {
 }
 
 export type AlertSource = 'nws' | 'usgs' | 'simulated';
+export type HazardType = 'earthquake' | 'tsunami' | 'flood' | 'wildfire' | 'hurricane' | 'tornado';
 export type AlertSeverity = 'extreme' | 'severe' | 'moderate' | 'minor' | 'unknown';
 
 export interface HazardAlert {
   id: string;
   source: AlertSource;
+  /** Which kind of disaster; drives the safety steps. Optional because some feeds don't say. */
+  hazard?: HazardType;
   title: string;
   description: string;
   instruction: string | null;

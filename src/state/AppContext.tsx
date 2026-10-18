@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
+import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
 import { DEMO_GROUP, DEMO_MEMBERS, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
 import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
@@ -272,9 +273,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       routeTo,
       async routeToBestTarget() {
-        const { group, personalMeetingPlace, myLocation } = s();
+        const { group, personalMeetingPlace, myLocation, activeAlert } = s();
         if (!myLocation) return;
-        const target = group ? (group.meetingPlace ?? nearestPlace(myLocation, group.safeAreas)) : personalMeetingPlace;
+        // During a disaster, pick a place that suits the hazard (e.g. not an open field in a tornado).
+        const hazard = activeAlert?.hazard;
+        const target = group
+          ? hazard
+            ? pickSafeTarget(hazard, myLocation, group)
+            : group.meetingPlace ?? nearestPlace(myLocation, group.safeAreas)
+          : hazard && !meetingPlaceOk(hazard)
+            ? null
+            : personalMeetingPlace;
         if (target) await routeTo(target);
       },
       async setStatus(status) {
