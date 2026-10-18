@@ -9,19 +9,20 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { formatAge, formatDistance } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
 import { makeSimulatedAlert } from '@/services/alerts';
-import { downloadRegion, estimateTileCount, ONLINE_TILE_URL, TILE_ATTRIBUTION, TILE_PATH_TEMPLATE } from '@/services/tiles';
+import { downloadRegion, planTiles, tileConfigurationError, localTilePath, ONLINE_TILE_URL, TILE_ATTRIBUTION } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, statusColor } from '@/theme';
 
 const STALE_MS = 15 * 60_000;
 // Android's Google base map often renders blank in Expo Go (Play services / API key issues).
-// With a tile key configured, draw MapTiler tiles instead — same provider as the offline cache.
+// With a tile key configured, draw configured raster tiles instead — same provider as the offline cache.
 const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
-  const { group, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { group, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const mapRef = useRef<MapView>(null);
+  const downloadBusy = useRef(false);
   const [tileProgress, setTileProgress] = useState<string | null>(null);
 
   // Open the alert screen whenever a new alert arrives.
@@ -29,20 +30,32 @@ export default function MapScreen() {
     if (activeAlert) router.push('/alert');
   }, [activeAlert?.id]);
 
-  const center = myLocation ?? group?.meetingPlace?.coord ?? UW_CENTER;
+  const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
 
-  const onDownloadTiles = async () => {
-    const n = estimateTileCount(center);
-    Alert.alert('Download offline map?', `About ${n} tiles (~${Math.round((n * 15) / 1024)} MB) around you.`, [
+  const onDownloadTiles = () => {
+    if (downloadBusy.current) return;
+    if (!isOnline) { Alert.alert('No connection', 'Connect to the internet before saving a map.'); return; }
+    const configError = tileConfigurationError();
+    if (configError) { Alert.alert('Offline map setup', configError); return; }
+    const meeting = meetingPlace?.coord;
+    let n: number;
+    try { n = planTiles(meeting ? [center, meeting] : [center]).length; }
+    catch (e) { Alert.alert('Cannot save area', (e as Error).message); return; }
+    Alert.alert('Download offline map?', `${n} tiles around you${meeting ? ' and the meeting place' : ''}, about ${Math.ceil(n * 30 / 1024)} MB (estimate). Covers 1.5 km around each point at zoom 12–16.`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Download',
-        onPress: async () => {
-          const region = await downloadRegion(center, (d, t) => setTileProgress(`${d}/${t}`));
-          setTileProgress(null);
-          if (region) actions.setTiles(region);
-        },
-      },
+      { text: 'Download', onPress: async () => {
+        if (downloadBusy.current) return;
+        downloadBusy.current = true;
+        setTileProgress('Starting…');
+        try {
+          const region = await downloadRegion(center, (d, t) => setTileProgress(`${d}/${t}`), meeting);
+          actions.setTiles(region);
+          Alert.alert('Map saved', 'Use Compass to navigate without signal. Only the downloaded areas and zoom levels are available offline.');
+        } catch (e) {
+          Alert.alert('Map not fully saved', e instanceof Error ? e.message : 'Please retry. Completed tiles will be reused.');
+        } finally { downloadBusy.current = false; setTileProgress(null); }
+      } },
     ]);
   };
 
@@ -51,14 +64,19 @@ export default function MapScreen() {
       <MapView
         ref={mapRef}
         style={styles.fill}
+        minZoomLevel={!isOnline && tiles ? tiles.minZoom : undefined}
+        maxZoomLevel={!isOnline && tiles ? tiles.maxZoom : undefined}
         showsUserLocation
         showsCompass
         mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
-        onLongPress={(e) => actions.setMeetingPlace(e.nativeEvent.coordinate)}
+        onLongPress={(e) => {
+          if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
+          void actions.setMeetingPlace(e.nativeEvent.coordinate);
+        }}
       >
         {USE_TILE_BASEMAP && isOnline && <UrlTile urlTemplate={ONLINE_TILE_URL} tileSize={256} maximumZ={19} />}
-        {!isOnline && tiles && <LocalTile pathTemplate={TILE_PATH_TEMPLATE} tileSize={256} />}
+        {!isOnline && tiles && <LocalTile key={tiles.downloadedAt} pathTemplate={localTilePath(tiles)} tileSize={256} />}
 
         {activeAlert?.areas.map((ring, i) => (
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(235,87,87,0.15)" strokeColor={colors.danger} />
@@ -66,8 +84,8 @@ export default function MapScreen() {
 
         {route && <Polyline coordinates={route.points} strokeColor={colors.primary} strokeWidth={5} lineDashPattern={route.isStraightLine ? [8, 6] : undefined} />}
 
-        {group?.meetingPlace && (
-          <Marker coordinate={group.meetingPlace.coord} title={group.meetingPlace.name} description="Meeting place" pinColor={colors.meeting} />
+        {meetingPlace && (
+          <Marker coordinate={meetingPlace.coord} title={meetingPlace.name} description={group ? "Group meeting place" : "Personal meeting place"} pinColor={colors.meeting} />
         )}
 
         {group?.safeAreas.map((p) => (
@@ -92,6 +110,8 @@ export default function MapScreen() {
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <OfflineBanner />
+        {!isOnline && <Text style={styles.demo}>Meeting place locked while offline</Text>}
+        {!isOnline && tiles && <Text style={styles.demo}>Saved map · {formatAge(Date.now() - tiles.downloadedAt)} · downloaded areas only</Text>}
         {DEMO_MODE && <Text style={styles.demo}>DEMO MODE · no Firebase config</Text>}
         {route && (
           <View style={styles.routeCard}>
@@ -111,7 +131,7 @@ export default function MapScreen() {
         {routingMessage && <Text style={styles.demo}>{routingMessage}</Text>}
       </SafeAreaView>
 
-      {(USE_TILE_BASEMAP || (!isOnline && tiles)) && <Text style={styles.attribution}>{TILE_ATTRIBUTION}</Text>}
+      {(USE_TILE_BASEMAP || (!isOnline && tiles)) && <Text style={styles.attribution} onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}>{!isOnline ? (tiles?.attribution ?? TILE_ATTRIBUTION) : TILE_ATTRIBUTION}</Text>}
 
       <View style={styles.actions}>
         <ActionButton icon="navigate" label={routingLoading ? "Routing…" : "Go"} onPress={() => { if (!routingLoading) void actions.routeToBestTarget(); }} />

@@ -8,7 +8,7 @@ import type { Member } from '@/types';
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, members, myLocation, myStatus } = state;
+  const { group, members, myLocation, myStatus, isOnline } = state;
   const [code, setCode] = useState('');
   const [newName, setNewName] = useState('');
   const [placeName, setPlaceName] = useState('');
@@ -23,6 +23,7 @@ export default function GroupScreen() {
     if (!ok) setMsg(fail);
   };
   const setHere = () => {
+    if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
     if (!myLocation) return Alert.alert('No location yet', 'Wait for a GPS fix, or long-press the map instead.');
     actions.setMeetingPlace(myLocation, placeName.trim() || 'Meeting place');
     setPlaceName('');
@@ -42,9 +43,9 @@ export default function GroupScreen() {
           <Text style={styles.muted}>Meeting place: {group.meetingPlace ? group.meetingPlace.name : 'not set yet'}</Text>
           <View style={styles.box}>
             <Text style={styles.name}>Set meeting place</Text>
-            <TextInput style={styles.input} placeholder="Name it (e.g. Front lawn)" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} />
-            <Pressable style={styles.btn} onPress={setHere}><Text style={styles.btnText}>Use my current location</Text></Pressable>
-            <Text style={styles.muted}>Or long-press anywhere on the Map tab to drop it there.</Text>
+            <TextInput style={styles.input} editable={isOnline} placeholder="Name it (e.g. Front lawn)" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} />
+            <Pressable style={[styles.btn, !isOnline && { opacity: 0.5 }]} disabled={!isOnline} onPress={setHere}><Text style={styles.btnText}>Use my current location</Text></Pressable>
+            <Text style={styles.muted}>{isOnline ? 'Or long-press anywhere on the Map tab to drop it there.' : 'Meeting place changes are locked while offline.'}</Text>
           </View>
           <FlatList
             style={{ marginTop: 12 }}

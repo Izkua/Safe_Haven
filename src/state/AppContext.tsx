@@ -1,13 +1,15 @@
 // Single app store shared by every screen. Services write into it; screens read from it.
 // Keeps an offline snapshot on disk so the app is useful with zero network after relaunch.
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
 import { DEMO_GROUP, DEMO_MEMBERS, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
-import { subscribeOnline } from '@/services/connectivity';
+import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
 import * as fb from '@/services/firebase';
 import * as loc from '@/services/location';
 import { loadSnapshot, saveSnapshot } from '@/services/offline';
+import { loadSavedTileRegion } from '@/services/tiles';
 import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute } from '@/services/routing';
 import type { Group, HazardAlert, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
 
@@ -15,6 +17,7 @@ export const DEMO_MODE = !fb.isFirebaseConfigured;
 
 export interface AppState {
   hydrated: boolean;
+  personalMeetingPlace: Place | null;
   routingLoading: boolean;
   routingMessage: string | null;
   routeIsCached: boolean;
@@ -37,6 +40,7 @@ type Action =
 
 const initial: AppState = {
   hydrated: false,
+  personalMeetingPlace: null,
   routingLoading: false,
   routingMessage: null,
   routeIsCached: false,
@@ -91,6 +95,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       let snap = await loadSnapshot();
+      const savedTiles = await loadSavedTileRegion();
       // A saved demo group must never shadow the real join/create screen when Firebase is configured.
       if (!DEMO_MODE && snap?.group?.id === 'demo-group') snap = { ...snap, group: null, members: [] };
       // Only trust a uid that actually signed in; a stale cached uid means unauthenticated requests.
@@ -100,11 +105,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patch: {
           myUid: uid,
           myName: snap?.myName ?? 'Me',
+          personalMeetingPlace: snap?.personalMeetingPlace ?? null,
           group: snap?.group ?? (DEMO_MODE ? DEMO_GROUP : null),
           members: snap?.members ?? (DEMO_MODE ? DEMO_MEMBERS : []),
           route: snap?.route ?? null,
           routeIsCached: !!snap?.route,
-          tiles: snap?.tiles ?? null,
+          tiles: savedTiles ?? snap?.tiles ?? null,
           lastSyncedAt: snap?.savedAt ?? null,
         },
       });
@@ -124,7 +130,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.hydrated || state.myUid || !state.isOnline || DEMO_MODE) return;
     fb.ensureSignedIn().then((uid) => set({ myUid: uid })).catch(() => {});
-  }, [state.hydrated, state.myUid, state.isOnline, set]);
+  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.isOnline, set]);
 
   // 3. Foreground location + throttled publish.
   const publishIfDue = useCallback((coord: LatLng) => {
@@ -203,6 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.hydrated) return;
     saveSnapshot({
+      personalMeetingPlace: state.personalMeetingPlace,
       myUid: state.myUid,
       myName: state.myName,
       group: state.group,
@@ -210,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       route: state.route,
       tiles: state.tiles,
     });
-  }, [state.hydrated, state.myUid, state.myName, state.group, state.members, state.route, state.tiles]);
+  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.myName, state.group, state.members, state.route, state.tiles]);
 
   const actions = useMemo<AppActions>(() => {
     const s = () => stateRef.current;
@@ -244,9 +251,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     return {
       async setMeetingPlace(coord, name = 'Meeting place') {
+        if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+          Alert.alert('Meeting place locked offline', 'Reconnect to the internet to change the meeting place. Your saved location has not changed.');
+          return;
+        }
         const place: Place = { id: 'meet', name, coord, type: 'meeting' };
-        updateGroup({ meetingPlace: place });
         const g = s().group;
+        if (g) updateGroup({ meetingPlace: place });
+        else set({ personalMeetingPlace: place });
         await routeTo(place);
         // Not awaited + caught: hangs offline, and a denied write must not be an unhandled rejection.
         if (g) fb.setMeetingPlace(g.id, place).catch((e) => console.warn('setMeetingPlace', e?.message));
@@ -260,9 +272,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       routeTo,
       async routeToBestTarget() {
-        const { group, myLocation } = s();
-        if (!group || !myLocation) return;
-        const target = group.meetingPlace ?? nearestPlace(myLocation, group.safeAreas);
+        const { group, personalMeetingPlace, myLocation } = s();
+        if (!myLocation) return;
+        const target = group ? (group.meetingPlace ?? nearestPlace(myLocation, group.safeAreas)) : personalMeetingPlace;
         if (target) await routeTo(target);
       },
       async setStatus(status) {
