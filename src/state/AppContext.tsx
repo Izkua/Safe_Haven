@@ -2,7 +2,7 @@
 // Keeps an offline snapshot on disk so the app is useful with zero network after relaunch.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState as AppLifecycle } from 'react-native';
 import { distanceM, formatDistance, MAX_WALK_M, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
@@ -159,6 +159,8 @@ export interface AppActions {
   clearRoute(): void;
   setStatus(status: MemberStatus): Promise<void>;
   setName(name: string): Promise<void>;
+  /** [UI] Ask for location (shows the iOS prompt the first time) and start tracking if allowed. */
+  enableLocation(): Promise<boolean>;
   /** Set or clear (null) my profile picture. */
   setPhoto(photo: string | null): void;
   /** Set or clear ('' ) the phone number my groups can see. */
@@ -264,20 +266,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastPublished.current = { coord, ts: Date.now() };
     fb.publishLocation(myUid, coord).catch(() => {});
   }, []);
+  // [UI] Only CHECK permission here, never ask: asking on launch showed the iOS prompt on the very
+  // first onboarding screen. Onboarding's "Allow location" (and Settings) ask via enableLocation(),
+  // which bumps locationTry to start tracking; so does coming back from the iOS Settings app.
+  const [locationTry, setLocationTry] = useState(0);
+  const watching = useRef(false);
   useEffect(() => {
     let stop: (() => void) | undefined;
+    let cancelled = false;
     (async () => {
-      if (!(await loc.requestForegroundPermission())) {
+      if (!(await loc.hasForegroundPermission())) {
         if (DEMO_MODE) set({ myLocation: UW_CENTER });
         return;
       }
+      if (cancelled) return;
+      watching.current = true;
       stop = await loc.startForegroundWatch((coord) => {
         set({ myLocation: coord });
         publishIfDue(coord);
       });
+      if (cancelled) stop();
     })();
-    return () => stop?.();
-  }, [set, publishIfDue]);
+    return () => {
+      cancelled = true;
+      watching.current = false;
+      stop?.();
+    };
+  }, [set, publishIfDue, locationTry]);
+  useEffect(() => {
+    const sub = AppLifecycle.addEventListener('change', (next) => {
+      if (next === 'active' && !watching.current) setLocationTry((n) => n + 1);
+    });
+    return () => sub.remove();
+  }, []);
   // The first GPS fix can arrive before sign-in finishes (or while offline): publish once we can.
   useEffect(() => {
     const coord = stateRef.current.myLocation;
@@ -583,6 +604,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ myStatus: status });
         const uid = s().myUid;
         if (uid) fb.publishStatus(uid, status).catch((e) => console.warn('publishStatus', e?.message));
+      },
+      async enableLocation() {
+        const granted = await loc.requestForegroundPermission().catch(() => false);
+        if (granted) setLocationTry((n) => n + 1);
+        return granted;
       },
       async setName(name) {
         set({ myName: name });
