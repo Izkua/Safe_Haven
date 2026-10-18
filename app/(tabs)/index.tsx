@@ -169,6 +169,24 @@ export default function MapScreen() {
   const meetingPlace = group && !currentHidden ? group.meetingPlace : null;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
+
+  // [UI] "Needs help" banner: frame me and everyone who needs help (whose pin is on the map), so you
+  // can see where they are relative to you. No pins to show (no location yet, or their group is
+  // unchecked in the filter): fall back to the Group tab, which lists them.
+  const frameNeedHelp = () => {
+    const helpPins = shownMembers.filter((m) => m.status === 'need_help' && m.location).map((m) => m.location!);
+    if (!helpPins.length) {
+      router.navigate('/group');
+      return;
+    }
+    const coords = myLocation ? [myLocation, ...helpPins] : helpPins;
+    if (coords.length === 1) {
+      mapRef.current?.animateToRegion({ ...coords[0], latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
+    } else {
+      // Clear of the banners at the top; mapPadding already keeps pins above the bottom panel.
+      mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true });
+    }
+  };
   // Color by position across ALL my groups (current group first) so a person keeps one color.
   const colorOrder = useMemo(() => allMemberIds(group ? [group, ...groups] : groups), [group, groups]);
   const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
@@ -427,7 +445,7 @@ export default function MapScreen() {
             icon="alert-circle"
             title={needHelp.length === 1 ? `${needHelp[0].name} needs help` : `${needHelp.length} people need help`}
             action="Tap to see where"
-            onPress={() => router.navigate('/group')}
+            onPress={frameNeedHelp}
           />
         )}
         <OfflineBanner />
