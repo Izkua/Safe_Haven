@@ -17,6 +17,13 @@
         ]
       }
     },
+    "android": {
+      "package": "com.dubhacks.safehaven",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
     "plugins": [
       "expo-router",
       [
@@ -28,6 +35,13 @@
       ],
       "expo-notifications",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "09a207c3-3c91-4c61-b98d-1d2b071e6b8e"
+      }
+    },
+    "owner": "nytrinh"
   }
 }

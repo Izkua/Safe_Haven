@@ -76,6 +76,7 @@ export default function MapScreen() {
   // swipe briefly redrew the panel at a stale position (the "whole menu flashes" glitch).
   const { height: screenH } = useWindowDimensions();
   const [open, setOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [closedH, setClosedH] = useState(96); // handle + destination
   const [fullH, setFullH] = useState(Math.round(screenH * 0.5)); // whole panel
   const closedOffset = Math.max(0, fullH - closedH);
@@ -210,7 +211,10 @@ export default function MapScreen() {
         showsCompass
         mapType="standard"
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
-        mapPadding={{ top: 0, left: 0, right: 0, bottom: open ? fullH : closedH }}
+        // Android (New Architecture): setting mapPadding before the Google map exists crashes
+        // with a NullPointerException in setPadding. Only pass it once the map reports ready.
+        onMapReady={() => setMapReady(true)}
+        mapPadding={mapReady ? { top: 0, left: 0, right: 0, bottom: open ? fullH : closedH } : undefined}
       >
         {activeAlert?.areas.map((ring, i) => (
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
