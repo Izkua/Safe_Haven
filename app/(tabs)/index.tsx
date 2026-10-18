@@ -45,6 +45,19 @@ export default function MapScreen() {
   //   1. hold a spot on the map (map frozen while choosing, preview pin), coord already known;
   //   2. "Set meeting point" in the panel: type an address, or use where I am now (coord null).
   const [mapLocked, setMapLocked] = useState(false);
+  // Bumped to cancel a half-finished hold (and unfreeze the map): when the Map leaves or comes back
+  // into view, and when an alert opens over it. See HoldGroupPicker's resetKey.
+  const [holdReset, setHoldReset] = useState(0);
+  const resetHold = useCallback(() => {
+    setMapLocked(false);
+    setHoldReset((n) => n + 1);
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      resetHold();
+      return resetHold;
+    }, [resetHold]),
+  );
   const [pendingPin, setPendingPin] = useState<LatLng | null>(null);
   const [naming, setNaming] = useState<{ coord: LatLng | null; option: PickOption; name: string; address: string } | null>(null);
   const [finding, setFinding] = useState(false);
@@ -161,9 +174,21 @@ export default function MapScreen() {
   useEffect(() => onMapFocusRequest(() => applyRef.current()), []);
   useFocusEffect(useCallback(() => applyRef.current(), []));
 
-  // Open the alert screen whenever a new alert arrives.
+  // Open the alert screen whenever a new alert arrives (a drill from someone else can land at any
+  // moment, e.g. mid way through dropping a meeting point). First drop everything the map was in the
+  // middle of: the hold, the preview pin and the naming box. The naming box is a <Modal>; opening the
+  // full-screen alert on top of it on iOS can leave a half-shown modal behind that swallows every touch
+  // on the map. So when it was open, give it time to close before the alert opens.
+  const namingOpen = useRef(false);
+  namingOpen.current = !!naming;
   useEffect(() => {
-    if (activeAlert) router.push('/alert');
+    resetHold(); // the alert covers the map: cancel any hold the finger can no longer finish
+    if (!activeAlert) return;
+    const hadNaming = namingOpen.current;
+    setNaming(null);
+    setPendingPin(null);
+    const t = setTimeout(() => router.push('/alert'), hadNaming ? 450 : 0);
+    return () => clearTimeout(t);
   }, [activeAlert?.id]);
 
   // The current group can be unchecked in the group filter too: then its meeting point is hidden.
@@ -311,6 +336,7 @@ export default function MapScreen() {
         getCoordinate={async (pt) => (mapRef.current ? mapRef.current.coordinateForPoint(pt) : null)}
         canStart={() => !needsGroup() && !lockedOffline()}
         onLockMap={setMapLocked}
+        resetKey={holdReset}
         onPendingChange={setPendingPin}
         onPick={(coord, option) => startNaming(coord, option)}
       >
