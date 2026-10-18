@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+// [OWNER: MAP/OFFLINE] Offline readiness: what's saved for use without signal, and a button to save the rest.
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
+import { AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BigButton } from '@/components/BigButton';
 import { formatAge } from '@/lib/geo';
 import { checkOfflineReadiness, prepareOffline, type Readiness } from '@/services/readiness';
 import { useApp } from '@/state/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 
 export default function OfflineReadinessScreen() {
   const { state, actions } = useApp();
@@ -42,29 +45,44 @@ export default function OfflineReadinessScreen() {
   };
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{busy ? 'Preparing…' : checking ? 'Checking saved files…' : report?.ready ? 'Offline essentials saved' : 'Prepare for no signal'}</Text>
-      <Text style={styles.muted}>Checks saved meeting places, routes and group information. Apple Maps controls its own map cache; offline street-map coverage is not guaranteed.</Text>
-      {report?.checks.map((check) => (
-        <View key={check.id} style={styles.row}>
-          <Text style={[styles.label, { color: check.ready ? colors.safe : !check.required ? colors.muted : colors.warn }]}>{check.id === 'map' ? 'Not guaranteed' : !check.required ? 'Optional' : check.ready ? 'Saved' : 'Needed'} · {check.label}</Text>
-          <Text style={styles.muted}>{check.detail}</Text>
-        </View>
-      ))}
+      <Text style={styles.title} accessibilityRole="header">{busy ? 'Preparing…' : checking ? 'Checking saved files…' : report?.ready ? 'Offline essentials saved' : 'Prepare for no signal'}</Text>
+      <Text style={styles.lead}>Checks saved meeting places, routes and group information. Apple Maps controls its own map cache; offline street-map coverage is not guaranteed.</Text>
+      <View>
+        {report?.checks.map((check, i) => {
+          const tag = check.id === 'map' ? 'Not guaranteed' : !check.required ? 'Optional' : check.ready ? 'Saved' : 'Needed';
+          const needed = tag === 'Needed';
+          const icon: ComponentProps<typeof Ionicons>['name'] = check.ready ? 'checkmark-circle' : needed ? 'alert-circle' : 'ellipse-outline';
+          return (
+            <View key={check.id} style={[styles.row, i < report.checks.length - 1 && styles.rowRule]} accessible accessibilityLabel={`${tag}: ${check.label}. ${check.detail}`}>
+              <Ionicons name={icon} size={26} color={check.ready ? colors.safe : needed ? colors.dangerText : colors.muted} />
+              <View style={styles.rowText}>
+                <Text style={styles.label}>{check.label}</Text>
+                <Text style={[styles.tag, check.ready && { color: colors.safe }, needed && { color: colors.dangerText }]}>{tag}</Text>
+                <Text style={styles.muted}>{check.detail}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
       {message && <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text>}
-      <Pressable accessibilityRole="button" disabled={busy || !state.isOnline} onPress={prepare} style={[styles.button, (busy || !state.isOnline) && styles.disabled]}>
-        <Text style={styles.buttonText}>{busy ? 'Preparing…' : 'Prepare for offline'}</Text>
-      </Pressable>
+      <BigButton label={busy ? 'Preparing…' : 'Prepare for offline'} icon="cloud-download-outline" loading={busy} disabled={busy || !state.isOnline} onPress={() => void prepare()} />
       {!state.isOnline && <Text style={styles.muted}>You can check saved files offline. Reconnect to refresh anything missing.</Text>}
-      <Pressable accessibilityRole="button" disabled={busy || checking} onPress={() => { void refresh(); }} style={styles.secondary}><Text style={styles.buttonText}>Check again</Text></Pressable>
+      <BigButton label="Check again" icon="refresh" variant="secondary" disabled={busy || checking} onPress={() => void refresh()} />
       {report && <Text style={styles.muted}>Checked {formatAge(Date.now() - report.checkedAt)}. Readiness changes if you move or choose another destination.</Text>}
       <Text style={styles.muted}>This screen saves app data, not Apple map tiles. A saved route does not account for new hazards. In Expo Go, reopening the app itself may still need the development server.</Text>
     </ScrollView>
   );
 }
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg }, content: { padding: 20, gap: 16, paddingBottom: 48 },
-  title: { color: colors.text, fontSize: 24, fontWeight: '700' }, muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  row: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.muted, gap: 6 }, label: { fontSize: 17, fontWeight: '600' },
-  button: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center' }, disabled: { opacity: 0.45 },
-  buttonText: { color: colors.text, fontSize: 16, fontWeight: '600' }, secondary: { padding: 14, alignItems: 'center' }, message: { color: colors.warn, lineHeight: 21 },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48, gap: 16 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
+  lead: { fontSize: 17, lineHeight: 24, color: colors.muted },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 12 },
+  rowRule: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.rule },
+  rowText: { flex: 1, gap: 2 },
+  label: { fontSize: 17, fontWeight: '600', color: colors.text },
+  tag: { fontSize: 15, fontWeight: '600', color: colors.muted },
+  muted: { fontSize: 15, lineHeight: 21, color: colors.muted },
+  message: { fontSize: 15, lineHeight: 21, fontWeight: '600', color: colors.text, backgroundColor: colors.card, borderRadius: radius, padding: 14, overflow: 'hidden' },
 });

@@ -90,7 +90,21 @@ export function mapOverlayColors(scheme: string | null | undefined) {
   };
 }
 
-export const statusColor = { safe: colors.safe, need_help: colors.dangerText, unknown: colors.muted } as const;
+/**
+ * Plain-string colors for the native stack header, which doesn't reliably take dynamic colors
+ * (it fell back to a white header). Pass `useColorScheme()` so it follows light / dark mode.
+ */
+export function headerColors(scheme: string | null | undefined) {
+  const dark = scheme !== 'light';
+  return {
+    bg: dark ? palette.slate : palette.sand,
+    text: dark ? palette.mist : palette.bark,
+    /** Header buttons (inside the header, dynamic colors resolve as light mode). */
+    card: dark ? palette.slateRaised : palette.sandDeep,
+  };
+}
+
+export const statusColor ={ safe: colors.safe, need_help: colors.dangerText, unknown: colors.muted } as const;
 
 /** Corner radius for buttons, banners and inputs. */
 export const radius = 12;
