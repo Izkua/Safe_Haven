@@ -29,10 +29,11 @@ export const palette = {
   watch: '#E3A21A',
   safeFill: '#2C6B4B',
   // route line (map overlay only)
-  routeLight: '#1550C8',
-  routeCasingLight: '#0B2E73',
-  routeDark: '#5AA9FF',
-  routeCasingDark: '#0A2152',
+  // Apple Maps style: bright system blue with a thin, darker blue border.
+  routeLight: '#1A7CF5',
+  routeCasingLight: '#0B57C9',
+  routeDark: '#2E8BFF',
+  routeCasingDark: '#0A4FB8',
 };
 
 // Dark is the default. index.tsx loads the saved preference (Dark / Light / Match phone) and applies
@@ -82,7 +83,7 @@ export function mapOverlayColors(scheme: string | null | undefined) {
   const dark = scheme !== 'light';
   return {
     // Route Blue: the one non-signal color, reserved for the route line so it reads as "the way"
-    // and never as danger/watch/safe. Drawn over a darker navy casing so it pops on any map tile.
+    // and never as danger/watch/safe. Drawn over a darker blue casing (Apple Maps style).
     route: dark ? palette.routeDark : palette.routeLight,
     routeCasing: dark ? palette.routeCasingDark : palette.routeCasingLight,
     danger: dark ? palette.dangerTextDark : palette.danger,

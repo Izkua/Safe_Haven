@@ -35,7 +35,7 @@ export default function MapScreen() {
   const [confirming, setConfirming] = useState(false);
 
   // ---- Swipeable panel: two positions ----
-  //   open:      at least half the screen, every action
+  //   open:      sized to its content (no empty space), every action
   //   collapsed: just the handle + where you're going (the map leads)
   // Animated with the JS driver on purpose: with the native driver, a re-render right after a
   // swipe briefly redrew the panel at a stale position (the "whole menu flashes" glitch).
@@ -195,13 +195,13 @@ export default function MapScreen() {
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
-        {/* Route: bright blue over a darker casing so it stands out on any tile, light or dark. */}
+        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border. */}
         {route && (
           <Polyline
             key={`casing-${overlay.routeCasing}`}
             coordinates={route.points}
             strokeColor={overlay.routeCasing}
-            strokeWidth={9}
+            strokeWidth={10}
             lineCap="round"
             lineJoin="round"
             lineDashPattern={route.isStraightLine ? [14, 10] : undefined}
@@ -213,7 +213,7 @@ export default function MapScreen() {
             key={`route-${overlay.route}`}
             coordinates={route.points}
             strokeColor={overlay.route}
-            strokeWidth={5}
+            strokeWidth={7}
             lineCap="round"
             lineJoin="round"
             lineDashPattern={route.isStraightLine ? [14, 10] : undefined}
@@ -287,7 +287,7 @@ export default function MapScreen() {
       </SafeAreaView>
 
       <Animated.View
-        style={[styles.sheet, { minHeight: Math.round(screenH * 0.5), transform: [{ translateY: sheetY }] }]}
+        style={[styles.sheet, { transform: [{ translateY: sheetY }] }]}
         onLayout={(e) => setFullH(e.nativeEvent.layout.height)}
       >
         {/* Always visible. Drag it, or tap it, to open or close the panel. */}
