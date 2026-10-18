@@ -136,6 +136,8 @@ export interface AppActions {
   addSafeArea(coord: LatLng, name: string): Promise<void>;
   routeTo(target: Place): Promise<void>;
   routeToBestTarget(): Promise<void>;
+  /** Hides the current route (and any routing message). */
+  clearRoute(): void;
   setStatus(status: MemberStatus): Promise<void>;
   setName(name: string): Promise<void>;
   createGroup(name: string): Promise<boolean>;
@@ -391,9 +393,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fb.addSafeArea(g.id, place).catch((e) => console.warn('addSafeArea', e?.message));
       },
       routeTo,
+      clearRoute() {
+        beginRouteRequest(); // invalidate an in-flight route request
+        set({ route: null, routingLoading: false, routingMessage: null });
+      },
       async routeToBestTarget() {
-        const { group, personalMeetingPlace, myLocation, activeAlert } = s();
+        const { group: current, visibleGroupIds, personalMeetingPlace, myLocation, activeAlert } = s();
         if (!myLocation) return;
+        // A group unchecked in the map filter has its meeting point hidden, so don't route to it.
+        const group = current && !visibleGroupIds.includes(current.id) ? { ...current, meetingPlace: null } : current;
         // During a disaster, pick a place that suits the hazard (e.g. not an open field in a tornado).
         const hazard = activeAlert?.hazard;
         const target = group
@@ -436,7 +444,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'removeGroup', id: group.id });
       },
       selectGroup(id) {
-        set({ activeGroupId: id });
+        // Picking a group you'd hidden on the map turns it back on.
+        const v = s().visibleGroupIds;
+        set({ activeGroupId: id, visibleGroupIds: v.includes(id) ? v : [...v, id] });
       },
       toggleGroupVisible(id) {
         const v = s().visibleGroupIds;
