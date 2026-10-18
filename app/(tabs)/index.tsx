@@ -177,6 +177,8 @@ export default function MapScreen() {
     !!route && !!meetingPlace && route.targetId === meetingPlace.id &&
     (route.to.latitude !== meetingPlace.coord.latitude || route.to.longitude !== meetingPlace.coord.longitude);
   const routeShown = !!route && !routingLoading && !meetingMoved;
+  // Identity of the drawn route (see the Polylines below).
+  const routeKey = route ? `${route.to.latitude},${route.to.longitude}:${route.fetchedAt}:${route.points.length}` : '';
   const canRetry = routeShown && route!.isStraightLine && isOnline;
   const goDisabled = !target || (routeShown && !canRetry);
   const goLabel = routingLoading
@@ -272,10 +274,12 @@ export default function MapScreen() {
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
-        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border. */}
+        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border.
+            Re-keyed on the route itself: Apple Maps doesn't reliably redraw a line whose points
+            change in place, so a moved meeting point kept showing the old line. */}
         {route && (
           <Polyline
-            key={`casing-${overlay.routeCasing}`}
+            key={`casing-${overlay.routeCasing}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.routeCasing}
             strokeWidth={10}
@@ -287,7 +291,7 @@ export default function MapScreen() {
         )}
         {route && (
           <Polyline
-            key={`route-${overlay.route}`}
+            key={`route-${overlay.route}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.route}
             strokeWidth={7}
