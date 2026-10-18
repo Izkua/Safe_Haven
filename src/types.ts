@@ -23,6 +23,10 @@ export interface Place {
   type: PlaceType;
   /** Street address, when the place was set by typing one in. */
   address?: string;
+  /** [UI] Meeting points: who set it and when (ms epoch), shown to the group. */
+  setBy?: string;
+  setByName?: string;
+  setAt?: number;
 }
 
 export interface Group {

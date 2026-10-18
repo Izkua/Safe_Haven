@@ -10,6 +10,7 @@ import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
 import { requestMapFocus } from '@/lib/mapFocus';
+import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
@@ -20,7 +21,7 @@ const order = { need_help: 0, unknown: 1, safe: 2 } as const;
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
+  const { myUid, group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
   // Everyone else in the CURRENT group (state.members spans all my groups).
   const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
   const [mode, setMode] = useState<'none' | 'join' | 'create' | 'meeting'>('none');
@@ -182,6 +183,7 @@ export default function GroupScreen() {
   const sorted = [...members].sort((a, b) => order[a.status] - order[b.status] || (b.locationTs ?? 0) - (a.locationTs ?? 0));
   const count = members.length + 1;
   const meet = group.meetingPlace;
+  const setBy = meetingSetBy(meet, myUid); // "Set by Sam, 5 min ago"
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -192,6 +194,7 @@ export default function GroupScreen() {
         <Text style={styles.lead}>
           {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meet.address ? ` (${meet.address})` : ''}.` : 'No meeting point yet.'}
         </Text>
+        {setBy && <Text style={styles.setBy}>{setBy}</Text>}
 
         <Text style={styles.heading}>How are you?</Text>
         <View style={styles.statusRow}>
@@ -376,6 +379,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
+  setBy: { marginTop: 2, fontSize: 15, lineHeight: 20, color: colors.muted },
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
   heading: { marginTop: 28, marginBottom: 10, fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   body: { fontSize: 17, lineHeight: 24, color: colors.muted },
