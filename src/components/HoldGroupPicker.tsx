@@ -2,7 +2,7 @@
 // Slide onto a group and let go to drop that group's meeting place there. Letting go without
 // sliding leaves the list open so you can tap instead. With only one option, it skips the list.
 // Built on plain touch events (no extra native deps): touches inside the MapView bubble up to this wrapper's onTouch* handlers.
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { HOLD_MS, hoverIndex, ITEM_H, MENU_W, menuLayout, MOVE_TOLERANCE, type MenuLayout } from '@/lib/pinPicker';
 import { colors } from '@/theme';
@@ -22,11 +22,17 @@ type Props = {
   onPendingChange: (coord: LatLng | null) => void;
   onPick: (coord: LatLng, option: PickOption) => void;
   children: ReactNode;
+  /**
+   * Change this to cancel any hold in progress and unfreeze the map. A hold can be left half-done
+   * when another screen (e.g. an incoming alert) opens mid-hold: the finger then lifts on that
+   * screen, so this view never gets the touch-end that would unlock the map.
+   */
+  resetKey?: number;
 };
 
 type Picker = { coord: LatLng; layout: MenuLayout; mode: 'drag' | 'tap' };
 
-export function HoldGroupPicker({ options, getCoordinate, canStart, onLockMap, onPendingChange, onPick, children }: Props) {
+export function HoldGroupPicker({ options, getCoordinate, canStart, onLockMap, onPendingChange, onPick, children, resetKey }: Props) {
   const viewRef = useRef<View>(null);
   const origin = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +63,14 @@ export function HoldGroupPicker({ options, getCoordinate, canStart, onLockMap, o
     close();
     if (option) onPick(p.coord, option);
   };
+
+  // Reset on request, and never leave the map frozen if this view goes away mid-hold.
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
+  useEffect(() => () => { clearTimer(); onLockMap(false); }, []);
 
   const onTouchStart = (e: GestureResponderEvent) => {
     const open = pickerRef.current;
