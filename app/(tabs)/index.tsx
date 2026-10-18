@@ -2,7 +2,8 @@
 // Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import MapView, { Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
@@ -59,6 +60,13 @@ export default function MapScreen() {
       return resetHold;
     }, [resetHold]),
   );
+  // [UI] Android's Google map is always light, so white status bar icons vanish over it: use dark
+  // ones while this tab is showing (the app-wide setting comes back on other screens).
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
   const [pendingPin, setPendingPin] = useState<LatLng | null>(null);
   const [naming, setNaming] = useState<{ coord: LatLng | null; option: PickOption; name: string; address: string } | null>(null);
   const [finding, setFinding] = useState(false);
@@ -110,6 +118,9 @@ export default function MapScreen() {
   const [open, setOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [closedH, setClosedH] = useState(96); // handle + destination
+  // Height of the banners + group filter at the top; the map's own controls (Android's my-location
+  // button, the compass) go below it instead of hiding behind the group pill.
+  const [topH, setTopH] = useState(0);
   const [fullH, setFullH] = useState(Math.round(screenH * 0.5)); // whole panel
   const closedOffset = Math.max(0, fullH - closedH);
   const sheetY = useRef(new Animated.Value(closedOffset)).current;
@@ -161,10 +172,10 @@ export default function MapScreen() {
     const routedThere = !!r && r.to.latitude === place.coord.latitude && r.to.longitude === place.coord.longitude;
     if (showMe && me) {
       // Both pins, plus the route line (a walking route can bend outside the straight line between them).
-      // Bottom padding sits on top of mapPadding, which already clears the panel. Short delay so the
+      // Padding sits on top of mapPadding, which already clears the panel and the top banners. Short delay so the
       // alert's closing animation doesn't swallow the camera move.
       const coords = [me, place.coord, ...(routedThere ? r!.points : [])];
-      setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true }), 350);
+      setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, animated: true }), 350);
       return;
     }
     mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
@@ -231,8 +242,8 @@ export default function MapScreen() {
     if (coords.length === 1) {
       mapRef.current?.animateToRegion({ ...coords[0], latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
     } else {
-      // Clear of the banners at the top; mapPadding already keeps pins above the bottom panel.
-      mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true });
+      // mapPadding already keeps pins clear of the top banners and the bottom panel.
+      mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, animated: true });
     }
   };
   // Color by position across ALL my groups (current group first) so a person keeps one color.
@@ -244,7 +255,7 @@ export default function MapScreen() {
   // you can walk to; with none, the panel still shows it, marked "too far to walk".
   const meetingTooFar = !!meetingPlace && !!myLocation && tooFarToWalk(myLocation, meetingPlace.coord);
   const target =
-    (route && { name: route.targetName, coord: route.to, label: 'Heading to' }) ??
+    (route && { name: route.targetName, coord: route.to, label: 'Walking route' }) ??
     (meetingPlace && !meetingTooFar ? { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' } : null) ??
     (() => {
       const p = myLocation && group ? nearestPlace(myLocation, reachablePlaces(myLocation, group.safeAreas)) : null;
@@ -342,6 +353,7 @@ export default function MapScreen() {
 
   return (
     <View style={styles.fill}>
+      {Platform.OS === 'android' && focused && <StatusBar style="dark" />}
       <HoldGroupPicker
         options={pickOptions}
         getCoordinate={async (pt) => (mapRef.current ? mapRef.current.coordinateForPoint(pt) : null)}
@@ -366,7 +378,7 @@ export default function MapScreen() {
         // Android (New Architecture): setting mapPadding before the Google map exists crashes
         // with a NullPointerException in setPadding. Only pass it once the map reports ready.
         onMapReady={() => setMapReady(true)}
-        mapPadding={mapReady ? { top: 0, left: 0, right: 0, bottom: open ? fullH : closedH } : undefined}
+        mapPadding={mapReady ? { top: topH, left: 0, right: 0, bottom: open ? fullH : closedH } : undefined}
       >
         {activeAlert?.areas.map((ring, i) => (
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
@@ -489,7 +501,7 @@ export default function MapScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
+      <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none" onLayout={(e) => setTopH(Math.round(e.nativeEvent.layout.height))}>
         {/* Live danger first: it must stay visible after the alert screen closes. */}
         {activeAlert && (
           <DangerBanner

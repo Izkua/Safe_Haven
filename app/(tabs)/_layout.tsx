@@ -2,7 +2,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import type { ComponentProps } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '@/state/AppContext';
 import { colors } from '@/theme';
 
@@ -15,6 +16,9 @@ const icon = (on: IconName, off: IconName) =>
 export default function TabsLayout() {
   // Someone asking for help is the one thing the tab bar must shout about, from any screen.
   const helpCount = useApp().state.members.filter((m) => m.status === 'need_help').length;
+  // Android: the default bar sits the labels right on the system navigation bar; give them room.
+  const { bottom } = useSafeAreaInsets();
+  const androidBar = Platform.OS === 'android' ? { height: 64 + bottom, paddingTop: 6, paddingBottom: bottom + 8 } : null;
   return (
     <Tabs
       screenOptions={{
@@ -22,7 +26,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.text as string,
         tabBarInactiveTintColor: colors.muted as string,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.rule, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0, shadowOpacity: 0 },
+        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.rule, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0, shadowOpacity: 0, ...androidBar },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: icon('map', 'map-outline') }} />
