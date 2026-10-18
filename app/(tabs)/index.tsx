@@ -136,7 +136,9 @@ export default function MapScreen() {
     if (activeAlert) router.push('/alert');
   }, [activeAlert?.id]);
 
-  const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  // The current group can be unchecked in the group filter too: then its meeting point is hidden.
+  const currentHidden = !!group && !visibleGroupIds.includes(group.id);
+  const meetingPlace = group ? (currentHidden ? null : group.meetingPlace) : personalMeetingPlace;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
   // Color by position across ALL my groups (current group first) so a person keeps one color.
@@ -167,7 +169,7 @@ export default function MapScreen() {
   const goLabel = routingLoading
     ? 'Finding walking route…'
     : !target
-      ? 'Set a meeting point first'
+      ? currentHidden ? 'Group hidden on map' : 'Set a meeting point first'
       : meetingMoved
         ? 'Route to new meeting point'
         : canRetry
@@ -179,7 +181,9 @@ export default function MapScreen() {
               : 'Go to meeting point';
   const summary = target
     ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}`
-    : 'Hold a spot on the map to drop a meeting point.';
+    : currentHidden
+      ? `${group!.name} is hidden. Turn it on in the group filter to see its meeting point.`
+      : 'Hold a spot on the map to drop a meeting point.';
 
   // Pending selection: what it is, how far, and what confirming will do.
   const pendingMeters = pending && myLocation ? distanceM(myLocation, pending.coord) : null;
@@ -201,11 +205,23 @@ export default function MapScreen() {
   const groupIds = groups.map((g) => g.id);
   const meetingMarkers = groups.length
     ? groups
-        .filter((g) => g.meetingPlace && (g.id === group?.id || visibleGroupIds.includes(g.id)))
+        .filter((g) => g.meetingPlace && visibleGroupIds.includes(g.id))
         .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, groupName: g.name as string | null, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id, color: groupColor(g.id, groupIds) as string | null }))
     : meetingPlace
       ? [{ key: 'meet-personal', place: meetingPlace, groupName: null as string | null, description: 'Personal meeting place', current: true, color: null as string | null }]
       : [];
+  // Unchecking a group in the filter hides its meeting point, so drop a route or a pending
+  // "Go to …" that leads there (unless a shown group happens to meet at the same spot).
+  const sameSpot = (a: LatLng, b: LatLng) => a.latitude === b.latitude && a.longitude === b.longitude;
+  const hiddenMeetingSpot = (c: LatLng) =>
+    groups.some((g) => g.meetingPlace && !visibleGroupIds.includes(g.id) && sameSpot(g.meetingPlace.coord, c)) &&
+    !meetingMarkers.some((m) => sameSpot(m.place.coord, c));
+  useEffect(() => {
+    if (route && hiddenMeetingSpot(route.to)) actions.clearRoute();
+    if (pending && hiddenMeetingSpot(pending.coord)) setPending(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleGroupIds, groups, route?.to.latitude, route?.to.longitude, pending?.coord.latitude, pending?.coord.longitude]);
+
   // Already walking there? Then tapping its pin needs no new "Go" button.
   const isRoutedTo = (p: Place) =>
     !!route && route.to.latitude === p.coord.latitude && route.to.longitude === p.coord.longitude;
@@ -431,7 +447,7 @@ export default function MapScreen() {
                 onPress={() => void actions.routeToBestTarget()}
               />
               <BigButton
-                label={meetingPlace ? 'Change meeting point' : 'Set meeting point'}
+                label={(group ? group.meetingPlace : personalMeetingPlace) ? 'Change meeting point' : 'Set meeting point'}
                 icon="flag-outline"
                 variant="secondary"
                 accessibilityHint="Type an address or use where you are. You can also hold a spot on the map."
