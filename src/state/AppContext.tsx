@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
+import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
 import { DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
@@ -19,6 +20,11 @@ export const DEMO_MODE = !fb.isFirebaseConfigured;
 
 /** A shared drill older than this is ignored (e.g. reopening the app hours later). */
 const DRILL_FRESH_MS = 15 * 60_000;
+
+/** [UI] Identity of a meeting point, to spot when someone changes or removes it. */
+function meetingKey(p: Place | null | undefined): string {
+  return p ? `${p.coord.latitude},${p.coord.longitude},${p.name},${p.setAt ?? ''}` : 'none';
+}
 
 /** The alert a group drill shows: same steps as the real thing, clearly marked as practice. */
 function drillAlert(d: GroupDrill, mine = false): HazardAlert {
@@ -131,9 +137,13 @@ export interface AppActions {
    * Each group keeps its own meeting place.
    */
   setMeetingPlace(coord: LatLng, name?: string, groupId?: string, address?: string): Promise<void>;
+  /** [UI] Remove a group's meeting place (default: current group; no group: the personal one). Online only. */
+  clearMeetingPlace(groupId?: string): Promise<void>;
   addSafeArea(coord: LatLng, name: string): Promise<void>;
   routeTo(target: Place): Promise<void>;
   routeToBestTarget(): Promise<void>;
+  /** Hides the current route (and any routing message). */
+  clearRoute(): void;
   setStatus(status: MemberStatus): Promise<void>;
   setName(name: string): Promise<void>;
   createGroup(name: string): Promise<boolean>;
@@ -162,6 +172,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginRouteRequest = useRef(createRouteRequestGuard()).current;
   const lastPublished = useRef<{ coord: LatLng; ts: number } | null>(null);
   const seenDrills = useRef(new Set<string>());
+  // [UI] Last meeting point seen per group. The first snapshot of a group only records it (no
+  // notification on launch); later changes by someone else notify.
+  const seenMeetings = useRef(new Map<string, string>());
+  // Lets the group listener (set up before `actions`) re-route when the meeting point moves.
+  const actionsRef = useRef<AppActions | null>(null);
 
   // 1. Hydrate from disk first so offline launch shows the last-known world.
   useEffect(() => {
@@ -180,7 +195,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patch: {
           myUid: uid,
           myName: snap?.myName ?? 'Me',
-          personalMeetingPlace: snap?.personalMeetingPlace ?? null,
+          // [UI] Meeting points belong to a group now: ignore any personal one saved by an older version.
+          personalMeetingPlace: null,
           groups: savedGroups,
           activeGroupId: snap?.activeGroupId ?? snap?.group?.id ?? savedGroups[0]?.id ?? null,
           visibleGroupIds: snap?.visibleGroupIds ?? savedGroups.map((g) => g.id),
@@ -259,6 +275,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (group) => {
           dispatch({ type: 'upsertGroup', group });
           set({ lastSyncedAt: Date.now() });
+          // [UI] Someone else moved or removed this group's meeting point: tell me.
+          const mp = group.meetingPlace;
+          const key = meetingKey(mp);
+          const prev = seenMeetings.current.get(group.id);
+          seenMeetings.current.set(group.id, key);
+          if (prev !== undefined && prev !== key && mp?.setBy !== stateRef.current.myUid) {
+            if (mp) {
+              // Say where it is now: the typed address, else the nearest one (coordinates if lookup fails).
+              const place = mp;
+              void (async () => {
+                const where = place.address ?? (await loc.reverseGeocode(place.coord));
+                const { title, body } = meetingMovedNotice(group.name, place, where);
+                await alerts.notify(title, body);
+              })();
+            } else {
+              alerts.notify(`${group.name}: meeting point removed`, 'Your group no longer has a meeting point. Check the Group tab.');
+            }
+            // If I'm walking to this group's meeting point, follow it: re-route to the new spot, or
+            // drop the line when it was removed. (Offline, routeTo falls back to a straight line.)
+            const { activeGroupId, route } = stateRef.current;
+            if (group.id === activeGroupId && route?.targetId === 'meet') {
+              if (mp) actionsRef.current?.routeTo(mp).catch(() => {});
+              else set({ route: null });
+            }
+          }
           // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
           const d = group.drill;
           if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
@@ -346,20 +387,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     return {
       async setMeetingPlace(coord, name = 'Meeting place', groupId, address) {
+        // [UI] A meeting point is for a group; without one there's no one to meet.
+        if (!(groupId ? s().groups.some((x) => x.id === groupId) : s().group)) {
+          Alert.alert('Join a group first', 'Meeting points are shared with a group. Create or join one on the Group tab.');
+          return;
+        }
         if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
           Alert.alert('Meeting place locked offline', 'Reconnect to the internet to change the meeting place. Your saved location has not changed.');
           return;
         }
         // Firestore rejects `undefined` fields, so only include address when there is one.
-        const place: Place = { id: 'meet', name, coord, type: 'meeting', ...(address ? { address } : {}) };
+        const { myUid, myName } = s();
+        const place: Place = {
+          id: 'meet', name, coord, type: 'meeting', ...(address ? { address } : {}),
+          // [UI] Who set it and when, so the group can see (and gets notified of) every change.
+          ...(myUid ? { setBy: myUid } : {}), setByName: myName, setAt: Date.now(),
+        };
         const current = s().group;
         const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) seenMeetings.current.set(g.id, meetingKey(place)); // our own change: don't notify ourselves
         if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: place } });
         else set({ personalMeetingPlace: place });
         // Not awaited + caught: hangs offline, and a denied write must not be an unhandled rejection.
         if (g) fb.setMeetingPlace(g.id, place).catch((e) => console.warn('setMeetingPlace', e?.message));
         // Only re-route when this is the place we'd actually head to (current group, or personal).
         if (!g || g.id === current?.id) await routeTo(place);
+      },
+      async clearMeetingPlace(groupId) {
+        if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+          Alert.alert('Meeting place locked offline', 'Reconnect to the internet to remove the meeting place. Your saved location has not changed.');
+          return;
+        }
+        const current = s().group;
+        const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) seenMeetings.current.set(g.id, meetingKey(null)); // our own change: don't notify ourselves
+        if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: null } });
+        else set({ personalMeetingPlace: null });
+        if (g) fb.setMeetingPlace(g.id, null).catch((e) => console.warn('clearMeetingPlace', e?.message));
+        // Drop the route if it was heading to the place we just removed.
+        const { route } = s();
+        if ((!g || g.id === current?.id) && route?.targetId === 'meet') set({ route: null });
       },
       async addSafeArea(coord, name) {
         const place: Place = { id: `safe-${Date.now()}`, name, coord, type: 'custom' };
@@ -369,9 +436,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fb.addSafeArea(g.id, place).catch((e) => console.warn('addSafeArea', e?.message));
       },
       routeTo,
+      clearRoute() {
+        beginRouteRequest(); // invalidate an in-flight route request
+        set({ route: null, routingLoading: false, routingMessage: null });
+      },
       async routeToBestTarget() {
-        const { group, personalMeetingPlace, myLocation, activeAlert } = s();
+        const { group: current, visibleGroupIds, personalMeetingPlace, myLocation, activeAlert } = s();
         if (!myLocation) return;
+        // A group unchecked in the map filter has its meeting point hidden, so don't route to it.
+        const group = current && !visibleGroupIds.includes(current.id) ? { ...current, meetingPlace: null } : current;
         // During a disaster, pick a place that suits the hazard (e.g. not an open field in a tornado).
         const hazard = activeAlert?.hazard;
         const target = group
@@ -414,7 +487,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'removeGroup', id: group.id });
       },
       selectGroup(id) {
-        set({ activeGroupId: id });
+        // Picking a group you'd hidden on the map turns it back on.
+        const v = s().visibleGroupIds;
+        set({ activeGroupId: id, visibleGroupIds: v.includes(id) ? v : [...v, id] });
       },
       toggleGroupVisible(id) {
         const v = s().visibleGroupIds;
@@ -450,6 +525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [set, beginRouteRequest]);
 
+  actionsRef.current = actions;
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
 }
 

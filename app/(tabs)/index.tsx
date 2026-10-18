@@ -1,7 +1,7 @@
 // [OWNER: MAP/OFFLINE] Main map. Hold 1 s, slide to a group, let go = set that group's meeting place.
 // Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
-import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,7 +13,9 @@ import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
+import { takeMapFocus } from '@/lib/mapFocus';
 import { UW_CENTER } from '@/mocks/demo';
+import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress } from '@/services/location';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, groupColor, mapOverlayColors, memberColor, radius } from '@/theme';
@@ -25,11 +27,16 @@ const WALK_MPS = 1.3;
 export default function MapScreen() {
   const { state, actions } = useApp();
   const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
-  const { group, groups, visibleGroupIds, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { myUid, group, groups, visibleGroupIds, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const needHelp = members.filter((m) => m.status === 'need_help');
   const mapRef = useRef<MapView>(null);
-  // A safe area tapped on the map but not confirmed yet.
+  // A place tapped on the map (safe area, or a meeting point we're not routed to) but not confirmed yet.
   const [pending, setPending] = useState<Place | null>(null);
+  const [pendingKind, setPendingKind] = useState('Safe area');
+  const pick = (place: Place, kind: string) => {
+    setPending(place);
+    setPendingKind(kind);
+  };
   const [confirming, setConfirming] = useState(false);
 
   // Two ways to set a meeting point, both ending in the same naming box:
@@ -40,9 +47,18 @@ export default function MapScreen() {
   const [naming, setNaming] = useState<{ coord: LatLng | null; option: PickOption; name: string; address: string } | null>(null);
   const [finding, setFinding] = useState(false);
   const pickOptions: PickOption[] = useMemo(
-    () => (groups.length ? groups.map((g) => ({ id: g.id, label: g.id === group?.id ? `${g.name} (current)` : g.name })) : [{ id: null, label: 'Just me' }]),
+    () => (groups.length ? groups.map((g) => ({ id: g.id, label: g.id === group?.id ? `${g.name} (current)` : g.name })) : []),
     [groups, group?.id],
   );
+  // Meeting points are shared with a group, so you need one first.
+  const needsGroup = () => {
+    if (groups.length) return false;
+    Alert.alert('Join a group first', 'Meeting points are shared with a group. Create or join one on the Group tab.', [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Go to Group', onPress: () => router.navigate('/group') },
+    ]);
+    return true;
+  };
   const lockedOffline = () => {
     if (isOnline) return false;
     Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
@@ -113,12 +129,27 @@ export default function MapScreen() {
     [closedOffset, open, pending],
   );
 
+  // Picked another group on the Group tab: when the Map comes back into view, center on that group's
+  // meeting point. If we're walking somewhere else, offer it in the panel ("Go to …"); never auto-route.
+  useFocusEffect(
+    useCallback(() => {
+      const f = takeMapFocus();
+      if (!f) return;
+      const { place, label } = f;
+      mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
+      const routedThere = !!route && route.to.latitude === place.coord.latitude && route.to.longitude === place.coord.longitude;
+      if (route && !routedThere) pick(place, label);
+    }, [route]),
+  );
+
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
     if (activeAlert) router.push('/alert');
   }, [activeAlert?.id]);
 
-  const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  // The current group can be unchecked in the group filter too: then its meeting point is hidden.
+  const currentHidden = !!group && !visibleGroupIds.includes(group.id);
+  const meetingPlace = group && !currentHidden ? group.meetingPlace : null;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
   // Color by position across ALL my groups (current group first) so a person keeps one color.
@@ -128,7 +159,7 @@ export default function MapScreen() {
   // What the sheet points at: the active route's target, else the meeting place, else the nearest safe area.
   const target =
     (route && { name: route.targetName, coord: route.to, label: 'Heading to' }) ??
-    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: group ? 'Meeting point' : 'My meeting point' }) ??
+    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' }) ??
     (() => {
       const p = myLocation && group ? nearestPlace(myLocation, group.safeAreas) : null;
       return p ? { name: p.name, coord: p.coord, label: 'Nearest safe area' } : null;
@@ -136,6 +167,9 @@ export default function MapScreen() {
   const meters = route ? route.distanceM : target && myLocation ? distanceM(myLocation, target.coord) : null;
   const minutes = route && !route.isStraightLine ? route.durationS / 60 : meters !== null ? meters / WALK_MPS / 60 : null;
   const walk = minutes !== null ? `${Math.max(1, Math.round(minutes))} min walk` : null;
+  // [UI] "Set by Sam, 5 min ago" when the panel is showing the meeting point.
+  const setByLine =
+    meetingPlace && (target?.label === 'Meeting point' || route?.targetId === meetingPlace.id) ? meetingSetBy(meetingPlace, myUid) : null;
 
   // The route already on screen goes to the current target, so the main button has nothing to do
   // (it stays greyed) until a new place is picked. A failed walking route can still be retried.
@@ -144,12 +178,14 @@ export default function MapScreen() {
     !!route && !!meetingPlace && route.targetId === meetingPlace.id &&
     (route.to.latitude !== meetingPlace.coord.latitude || route.to.longitude !== meetingPlace.coord.longitude);
   const routeShown = !!route && !routingLoading && !meetingMoved;
+  // Identity of the drawn route (see the Polylines below).
+  const routeKey = route ? `${route.to.latitude},${route.to.longitude}:${route.fetchedAt}:${route.points.length}` : '';
   const canRetry = routeShown && route!.isStraightLine && isOnline;
   const goDisabled = !target || (routeShown && !canRetry);
   const goLabel = routingLoading
     ? 'Finding walking route…'
     : !target
-      ? 'Set a meeting point first'
+      ? currentHidden ? 'Group hidden on map' : 'Set a meeting point first'
       : meetingMoved
         ? 'Route to new meeting point'
         : canRetry
@@ -161,12 +197,16 @@ export default function MapScreen() {
               : 'Go to meeting point';
   const summary = target
     ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}`
-    : 'Hold a spot on the map to drop a meeting point.';
+    : currentHidden
+      ? `${group!.name} is hidden. Turn it on in the group filter to see its meeting point.`
+      : group
+        ? 'Hold a spot on the map to drop a meeting point.'
+        : 'Join a group on the Group tab to set a meeting point.';
 
   // Pending selection: what it is, how far, and what confirming will do.
   const pendingMeters = pending && myLocation ? distanceM(myLocation, pending.coord) : null;
   const pendingTitle = pending?.name ?? '';
-  const pendingSummary = `${pendingMeters !== null ? `${formatDistance(pendingMeters)} away. ` : ''}Safe area.`;
+  const pendingSummary = `${pendingMeters !== null ? `${formatDistance(pendingMeters)} away. ` : ''}${pendingKind}.`;
   const confirmPending = async () => {
     if (!pending) return;
     setConfirming(true);
@@ -183,18 +223,36 @@ export default function MapScreen() {
   const groupIds = groups.map((g) => g.id);
   const meetingMarkers = groups.length
     ? groups
-        .filter((g) => g.meetingPlace && (g.id === group?.id || visibleGroupIds.includes(g.id)))
-        .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id, color: groupColor(g.id, groupIds) as string | null }))
-    : meetingPlace
-      ? [{ key: 'meet-personal', place: meetingPlace, description: 'Personal meeting place', current: true, color: null as string | null }]
-      : [];
+        .filter((g) => g.meetingPlace && visibleGroupIds.includes(g.id))
+        .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, groupName: g.name as string | null, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id, color: groupColor(g.id, groupIds) as string | null }))
+    : [];
+  // Unchecking a group in the filter hides its meeting point, so drop a route or a pending
+  // "Go to …" that leads there (unless a shown group happens to meet at the same spot).
+  const sameSpot = (a: LatLng, b: LatLng) => a.latitude === b.latitude && a.longitude === b.longitude;
+  const hiddenMeetingSpot = (c: LatLng) =>
+    groups.some((g) => g.meetingPlace && !visibleGroupIds.includes(g.id) && sameSpot(g.meetingPlace.coord, c)) &&
+    !meetingMarkers.some((m) => sameSpot(m.place.coord, c));
+  useEffect(() => {
+    if (route && hiddenMeetingSpot(route.to)) actions.clearRoute();
+    if (pending && hiddenMeetingSpot(pending.coord)) setPending(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleGroupIds, groups, route?.to.latitude, route?.to.longitude, pending?.coord.latitude, pending?.coord.longitude]);
+
+  // Already walking there? Then tapping its pin needs no new "Go" button.
+  const isRoutedTo = (p: Place) =>
+    !!route && route.to.latitude === p.coord.latitude && route.to.longitude === p.coord.longitude;
+  const onMeetingPress = (m: (typeof meetingMarkers)[number]) => {
+    if (isRoutedTo(m.place)) return;
+    // Unique id per group so route-target checks can tell groups' meeting points apart.
+    pick({ ...m.place, id: m.key, name: m.groupName ? `${m.place.name} (${m.groupName})` : m.place.name }, m.groupName ? `${m.groupName} meeting point` : 'My meeting point');
+  };
 
   return (
     <View style={styles.fill}>
       <HoldGroupPicker
         options={pickOptions}
         getCoordinate={async (pt) => (mapRef.current ? mapRef.current.coordinateForPoint(pt) : null)}
-        canStart={() => !lockedOffline()}
+        canStart={() => !needsGroup() && !lockedOffline()}
         onLockMap={setMapLocked}
         onPendingChange={setPendingPin}
         onPick={(coord, option) => startNaming(coord, option)}
@@ -220,10 +278,12 @@ export default function MapScreen() {
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
-        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border. */}
+        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border.
+            Re-keyed on the route itself: Apple Maps doesn't reliably redraw a line whose points
+            change in place, so a moved meeting point kept showing the old line. */}
         {route && (
           <Polyline
-            key={`casing-${overlay.routeCasing}`}
+            key={`casing-${overlay.routeCasing}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.routeCasing}
             strokeWidth={10}
@@ -235,7 +295,7 @@ export default function MapScreen() {
         )}
         {route && (
           <Polyline
-            key={`route-${overlay.route}`}
+            key={`route-${overlay.route}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.route}
             strokeWidth={7}
@@ -248,7 +308,7 @@ export default function MapScreen() {
 
         {meetingMarkers.map((m) => (
           // Re-keyed on color: custom marker views aren't reliably redrawn in place.
-          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.4}>
+          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.4} onPress={() => onMeetingPress(m)}>
             <View style={[styles.meetingMarker, m.color ? { backgroundColor: m.color, borderColor: '#FFFFFF' } : null]} />
           </Marker>
         ))}
@@ -260,7 +320,7 @@ export default function MapScreen() {
         )}
 
         {group?.safeAreas.map((p) => (
-          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => setPending(p)}>
+          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => { if (!isRoutedTo(p)) pick(p, 'Safe area'); }}>
             <View style={styles.safeMarker} />
           </Marker>
         ))}
@@ -358,7 +418,7 @@ export default function MapScreen() {
         {!isOnline && !tiles?.downloadedAt && <Text style={styles.notice}>Apple Maps shows cached areas only. Meeting point can’t change while offline.</Text>}
         {routingMessage && <Text style={styles.notice}>{routingMessage}</Text>}
         {DEMO_MODE && <Text style={styles.demo}>Demo mode</Text>}
-        <GroupFilter groups={groups} visibleIds={visibleGroupIds} onToggle={actions.toggleGroupVisible} />
+        <GroupFilter groups={groups} visibleIds={visibleGroupIds} onToggle={actions.toggleGroupVisible} colorFor={(id) => groupColor(id, groupIds)} />
       </SafeAreaView>
 
       <Animated.View
@@ -381,6 +441,7 @@ export default function MapScreen() {
                 {pending ? pendingTitle : target ? target.name : 'No meeting point yet'}
               </Text>
               <Text style={styles.summary} numberOfLines={2}>{pending ? pendingSummary : summary}</Text>
+              {!pending && setByLine && <Text style={styles.setBy} numberOfLines={1}>{setByLine}</Text>}
             </View>
           </Pressable>
         </View>
@@ -408,12 +469,12 @@ export default function MapScreen() {
                 onPress={() => void actions.routeToBestTarget()}
               />
               <BigButton
-                label={meetingPlace ? 'Change meeting point' : 'Set meeting point'}
+                label={group?.meetingPlace ? 'Change meeting point' : 'Set meeting point'}
                 icon="flag-outline"
                 variant="secondary"
                 accessibilityHint="Type an address or use where you are. You can also hold a spot on the map."
                 onPress={() => {
-                  if (lockedOffline()) return;
+                  if (needsGroup() || lockedOffline()) return;
                   const current = pickOptions.find((o) => o.id === (group?.id ?? null)) ?? pickOptions[0];
                   startNaming(null, current);
                 }}
@@ -462,6 +523,7 @@ const styles = StyleSheet.create({
   sheetHead: { gap: 2, paddingHorizontal: 4, marginBottom: 4 },
   targetName: { fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   summary: { fontSize: 15, lineHeight: 20, color: colors.muted },
+  setBy: { fontSize: 13, lineHeight: 18, color: colors.muted },
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   fine: { fontSize: 12, lineHeight: 16, color: colors.muted, paddingHorizontal: 4 },

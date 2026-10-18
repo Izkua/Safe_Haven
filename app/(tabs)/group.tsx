@@ -2,14 +2,16 @@
 // Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
 // You can be in several groups: chips at the top pick the current one, or add another.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
-import { geocodeAddress } from '@/services/location';
+import { requestMapFocus } from '@/lib/mapFocus';
+import { meetingSetBy } from '@/lib/meeting';
+import { geocodeAddress, reverseGeocode } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
 import type { LatLng, Member } from '@/types';
@@ -19,7 +21,7 @@ const order = { need_help: 0, unknown: 1, safe: 2 } as const;
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
+  const { myUid, group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
   // Everyone else in the CURRENT group (state.members spans all my groups).
   const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
   const [mode, setMode] = useState<'none' | 'join' | 'create' | 'meeting'>('none');
@@ -32,6 +34,20 @@ export default function GroupScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  // The meeting point's address for the header: the typed one, else the nearest one looked up
+  // from the pin (kept per spot, so a moved point never shows the old address).
+  const meetPlace = group?.meetingPlace ?? null;
+  const meetSpot = meetPlace ? `${meetPlace.coord.latitude},${meetPlace.coord.longitude}` : '';
+  const [nearest, setNearest] = useState<{ spot: string; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!meetPlace || meetPlace.address) return;
+    let alive = true;
+    reverseGeocode(meetPlace.coord).then((text) => alive && setNearest({ spot: meetSpot, text }));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetSpot, meetPlace?.address]);
+  const meetAddress = meetPlace?.address ?? (nearest?.spot === meetSpot ? nearest.text : null);
   // Wait for the keyboard to finish opening, then bring the focused box into view.
   const scrollToInput = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
 
@@ -82,9 +98,13 @@ export default function GroupScreen() {
   };
   const pickGroup = (id: string) => {
     tap();
+    const switching = id !== group?.id;
     actions.selectGroup(id);
     setAdding(false);
     open('none');
+    // Switching groups: the Map shows that group's meeting point next time it's opened (no route started).
+    const g = groups.find((x) => x.id === id);
+    if (switching && g?.meetingPlace) requestMapFocus({ place: { ...g.meetingPlace, id: `meet-${g.id}` }, label: `${g.name} meeting point` });
   };
 
   // Group switcher: one chip per group, plus "Add group".
@@ -177,6 +197,7 @@ export default function GroupScreen() {
   const sorted = [...members].sort((a, b) => order[a.status] - order[b.status] || (b.locationTs ?? 0) - (a.locationTs ?? 0));
   const count = members.length + 1;
   const meet = group.meetingPlace;
+  const setBy = meetingSetBy(meet, myUid); // "Set by Sam, 5 min ago"
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -185,8 +206,9 @@ export default function GroupScreen() {
         {chips}
         <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
         <Text style={styles.lead}>
-          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meet.address ? ` (${meet.address})` : ''}.` : 'No meeting point yet.'}
+          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meetAddress && meetAddress !== meet.name ? `, ${meetAddress}` : ''}.` : 'No meeting point yet.'}
         </Text>
+        {setBy && <Text style={styles.setBy}>{setBy}</Text>}
 
         <Text style={styles.heading}>How are you?</Text>
         <View style={styles.statusRow}>
@@ -276,12 +298,27 @@ export default function GroupScreen() {
               onPress={() => Share.share({ message: `Join my SafeHaven group "${group.name}" with code ${group.inviteCode}` })}
             />
             <BigButton
-              label="Change meeting point"
+              label={meet ? 'Change meeting point' : 'Set meeting point'}
               icon="location-outline"
               variant="secondary"
               disabled={!isOnline}
               onPress={() => open('meeting')}
             />
+            {meet && (
+              <BigButton
+                label="Remove meeting point"
+                icon="trash-outline"
+                variant="plain"
+                disabled={!isOnline}
+                accessibilityHint={`Removes ${meet.name} for everyone in ${group.name}`}
+                onPress={() =>
+                  Alert.alert(`Remove ${meet.name}?`, `Everyone in ${group.name} will no longer see this meeting point. You can set a new one any time.`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Remove', style: 'destructive', onPress: () => void actions.clearMeetingPlace(group.id) },
+                  ])
+                }
+              />
+            )}
             {!isOnline && <Text style={styles.hint}>The meeting point can’t change while you’re offline.</Text>}
             <BigButton
               label="Leave group"
@@ -356,6 +393,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
+  setBy: { marginTop: 2, fontSize: 15, lineHeight: 20, color: colors.muted },
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
   heading: { marginTop: 28, marginBottom: 10, fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   body: { fontSize: 17, lineHeight: 24, color: colors.muted },

@@ -2,6 +2,7 @@
 // background updates only in "emergency mode" (needs EAS dev build on iOS).
 import * as Location from 'expo-location';
 import { distanceM } from '@/lib/geo';
+import { formatStreetAddress } from '@/lib/meeting';
 import type { LatLng } from '@/types';
 
 export const PUBLISH_MIN_DISTANCE_M = 20;
@@ -46,6 +47,23 @@ export function shouldPublish(
  * Address → coordinates with the phone's built-in geocoder (Apple / Google, no API key).
  * Null if nothing matched, no signal, or it took too long.
  */
+/**
+ * [UI] Nearest street address for a spot (e.g. "4060 George Washington Ln NE, Seattle"), or null.
+ * Uses the phone's built-in geocoder (Apple on iOS): no API key. Never throws.
+ */
+export async function reverseGeocode(coord: LatLng, timeoutMs = 8_000): Promise<string | null> {
+  try {
+    const results = await Promise.race([
+      Location.reverseGeocodeAsync(coord),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('reverse geocode timed out')), timeoutMs)),
+    ]);
+    return formatStreetAddress(results[0]);
+  } catch (e) {
+    console.warn('reverseGeocode failed:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 export async function geocodeAddress(address: string, timeoutMs = 10_000): Promise<LatLng | null> {
   const q = address.trim();
   if (!q) return null;

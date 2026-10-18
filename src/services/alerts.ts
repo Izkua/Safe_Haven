@@ -51,6 +51,12 @@ export async function notifyAlert(alert: HazardAlert): Promise<void> {
   });
 }
 
+/** [UI] A plain heads-up notification (e.g. "Sam moved the meeting point"). Never throws. */
+export async function notify(title: string, body: string): Promise<void> {
+  if (!Notifications) return;
+  await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null }).catch(() => {});
+}
+
 export function isUserAffected(alert: HazardAlert, me: LatLng): boolean {
   if (alert.areas.length) return alert.areas.some((ring) => pointInPolygon(me, ring));
   if (alert.center) return distanceM(me, alert.center) <= QUAKE_RADIUS_KM * 1000;
