@@ -1,4 +1,4 @@
-// [OWNER: UI] Announcements tab: send one to any of your groups (one or several), and see the last 5 (kept on this
+// [OWNER: UI] Announcements tab: send one to any of your groups (one or several), and see the last 10 (kept on this
 // phone) with who has seen each. The gear opens Settings.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
@@ -7,6 +7,7 @@ import { Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnnouncementCard } from '@/components/AnnouncementCard';
 import { BigButton } from '@/components/BigButton';
+import { DETAILS_MAX, TITLE_MAX } from '@/lib/announcements';
 import { tap } from '@/lib/haptics';
 import { useApp } from '@/state/AppContext';
 import { colors, groupColor, minTarget, radius } from '@/theme';
@@ -101,9 +102,10 @@ export default function AnnouncementsScreen() {
                 placeholder="Everyone meet at my house at 5:00"
                 placeholderTextColor={colors.muted}
                 autoFocus
-                maxLength={140}
-                accessibilityLabel="Announcement"
+                maxLength={TITLE_MAX}
+                accessibilityLabel={`Announcement, up to ${TITLE_MAX} characters`}
               />
+              <Counter used={title.length} max={TITLE_MAX} />
               <TextInput
                 style={[styles.input, styles.detailsInput]}
                 value={details}
@@ -111,9 +113,10 @@ export default function AnnouncementsScreen() {
                 placeholder="Details (optional)"
                 placeholderTextColor={colors.muted}
                 multiline
-                maxLength={500}
-                accessibilityLabel="Announcement details, optional"
+                maxLength={DETAILS_MAX}
+                accessibilityLabel={`Announcement details, optional, up to ${DETAILS_MAX} characters`}
               />
+              <Counter used={details.length} max={DETAILS_MAX} />
               <BigButton
                 label={to.length === 1 ? `Send to ${to[0].name}` : to.length ? `Send to ${to.length} groups` : 'Pick a group'}
                 icon="megaphone"
@@ -144,11 +147,21 @@ export default function AnnouncementsScreen() {
               ))}
             </View>
           ) : (
-            <Text style={styles.body}>No announcements yet. The last 5 are kept on this phone.</Text>
+            <Text style={styles.body}>No announcements yet. The last 10 are kept on this phone.</Text>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/** "23/140" under a field; full-strength text once the limit is reached. */
+function Counter({ used, max }: { used: number; max: number }) {
+  const full = used >= max;
+  return (
+    <Text style={[styles.counter, full && styles.counterFull]} accessibilityLabel={`${used} of ${max} characters used`}>
+      {full ? `Limit reached, ${max}/${max}` : `${used}/${max}`}
+    </Text>
   );
 }
 
@@ -172,6 +185,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 15, fontWeight: '600', color: colors.text },
   chipTextOn: { color: colors.onPrimary },
   input: { minHeight: minTarget, borderRadius: radius, paddingHorizontal: 16, fontSize: 17, color: colors.text, backgroundColor: colors.card },
+  counter: { marginTop: -4, alignSelf: 'flex-end', fontSize: 13, color: colors.muted, fontVariant: ['tabular-nums'] },
+  counterFull: { color: colors.text, fontWeight: '600' },
   detailsInput: { minHeight: 80, paddingTop: 14, paddingBottom: 14, textAlignVertical: 'top' },
   item: { paddingVertical: 14 },
   rule: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.rule },

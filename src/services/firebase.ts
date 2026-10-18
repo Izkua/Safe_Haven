@@ -352,8 +352,8 @@ export async function addSafeArea(groupId: string, place: Place): Promise<void> 
 // Stored at groups/{groupId}/announcements/{id}. Only members can read or post (firestore.rules).
 // sentAt is the sender's clock, so an announcement queued offline still sorts correctly.
 
-/** Newest announcements fetched per group (the phone keeps the last 5 overall). */
-export const ANNOUNCEMENTS_FETCHED = 5;
+/** Newest announcements fetched per group (the phone keeps the last 10 overall). */
+export const ANNOUNCEMENTS_FETCHED = 10;
 
 /** Live latest announcements for one group, newest first. Never throws; errors are logged. */
 export function subscribeAnnouncements(groupId: string, cb: (items: Announcement[]) => void): () => void {

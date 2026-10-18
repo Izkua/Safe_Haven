@@ -27,11 +27,11 @@ test('already-seen announcements never alert again, even after dropping off the 
   expect(again.saved).toEqual([]);
 });
 
-test('keeps only the newest five, newest first', () => {
-  const incoming = Array.from({ length: 8 }, (_, i) => ann(`n${i}`, 'mom', i));
+test('keeps only the newest ten, newest first', () => {
+  const incoming = Array.from({ length: 13 }, (_, i) => ann(`n${i}`, 'mom', i));
   const r = mergeAnnouncements([], [], incoming, 'me', NOW);
   expect(r.saved).toHaveLength(KEEP_ANNOUNCEMENTS);
-  expect(r.saved.map((a) => a.id)).toEqual(['n0', 'n1', 'n2', 'n3', 'n4']);
+  expect(r.saved.map((a) => a.id)).toEqual(['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9']);
 });
 
 test('dismissing the newest reveals the next undismissed one', () => {
@@ -53,4 +53,11 @@ test('ack summary leaves out the sender and names you as You', () => {
   const a = { ...ann('a', 'mom', 1), ackedBy: ['me'] };
   const r = ackSummary(a, ['mom', 'me', 'sis', 'dad'], { mom: 'Mom', sis: 'Sis' }, 'me');
   expect(r).toEqual({ seen: ['You'], waiting: ['Sis', 'Someone'] });
+});
+
+test('announcements sent before you joined the group are history, newer ones alert', () => {
+  const joinedAt = { g: NOW - 5 * 60_000 };
+  const r = mergeAnnouncements([], [], [ann('before', 'mom', 30), ann('after', 'mom', 1)], 'me', NOW, joinedAt);
+  expect(r.alerts.map((a) => a.id)).toEqual(['after']);
+  expect(r.saved.find((a) => a.id === 'before')?.dismissed).toBe(true);
 });
