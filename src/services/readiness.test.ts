@@ -1,14 +1,14 @@
 import { beforeEach, expect, jest, test } from '@jest/globals';
 import * as FileSystem from 'expo-file-system/legacy';
 import { loadSnapshot, persistSnapshot } from './offline';
-import { downloadRegion, loadSavedTileRegion } from './tiles';
+import { loadSavedTileRegion } from './tiles';
 import { fetchWalkingRoute } from './routing';
 import { checkOfflineReadiness, prepareOffline, type ReadinessInput } from './readiness';
 import type { OfflineSnapshot, Place, Route, TileRegion } from '@/types';
 
 jest.mock('expo-file-system/legacy', () => ({ getInfoAsync: jest.fn() }));
 jest.mock('./offline', () => ({ loadSnapshot: jest.fn(), persistSnapshot: jest.fn() }));
-jest.mock('./tiles', () => ({ TILE_DIR: 'file:///tiles', loadSavedTileRegion: jest.fn(), downloadRegion: jest.fn() }));
+jest.mock('./tiles', () => ({ TILE_DIR: 'file:///tiles', loadSavedTileRegion: jest.fn() }));
 jest.mock('./routing', () => ({
  fetchWalkingRoute: jest.fn(),
  matchesDestination: (r: Route | null, p: Place) => !!r && r.targetId === p.id && r.to.latitude === p.coord.latitude && r.to.longitude === p.coord.longitude,
@@ -25,7 +25,6 @@ beforeEach(() => {
  jest.mocked(loadSavedTileRegion).mockResolvedValue(tiles);
  jest.mocked(FileSystem.getInfoAsync).mockResolvedValue({ exists: true, size: 100, isDirectory: false, uri: 'file:///tile', modificationTime: 1 });
  jest.mocked(fetchWalkingRoute).mockResolvedValue(route);
- jest.mocked(downloadRegion).mockResolvedValue(tiles);
  jest.mocked(persistSnapshot).mockResolvedValue();
 });
 test('complete saved personal plan is ready without requiring a group', async () => {
@@ -53,15 +52,13 @@ test('missing or stale group locations prevent a ready badge', async () => {
  jest.mocked(loadSnapshot).mockResolvedValue({ ...snapshot(), group, members: [{ uid: 'friend', name: 'Friend', location: coord, locationTs: Date.now() - 16 * 60000, status: 'safe' }] });
  expect((await checkOfflineReadiness({ ...input, group })).ready).toBe(false);
 });
-test('offline preparation never fetches or downloads', async () => {
+test('offline preparation never fetches', async () => {
  await expect(prepareOffline(() => input, () => false, () => {}, () => {})).rejects.toThrow('Connect');
  expect(fetchWalkingRoute).not.toHaveBeenCalled();
- expect(downloadRegion).not.toHaveBeenCalled();
 });
 test('preparation writes route, tiles and member snapshot before applying state', async () => {
  const apply = jest.fn();
  await prepareOffline(() => input, () => true, () => {}, apply);
- expect(downloadRegion).not.toHaveBeenCalled();
  expect(persistSnapshot).toHaveBeenCalledWith(expect.objectContaining({ route, tiles, personalMeetingPlace: place }));
  expect(apply).toHaveBeenCalledWith(route, tiles);
 });
@@ -75,7 +72,6 @@ test('destination changed during request cannot publish an old plan', async () =
  const current = jest.fn<() => ReadinessInput>();
  current.mockReturnValueOnce(input).mockReturnValue({ ...input, personalMeetingPlace: { ...place, coord: { ...coord, latitude: 47.67 } } });
  await expect(prepareOffline(current, () => true, () => {}, () => {})).rejects.toThrow('changed');
- expect(downloadRegion).not.toHaveBeenCalled();
  expect(persistSnapshot).not.toHaveBeenCalled();
 });
 
