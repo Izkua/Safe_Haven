@@ -285,7 +285,7 @@ export default function GroupScreen() {
             ) : (
               <BigButton label="Use where I am now" icon="locate" onPress={setHere} />
             )}
-            <Text style={styles.hint}>Or on the Map tab: hold a spot for 1 second, slide to a group, and let go.</Text>
+            <Text style={styles.hint}>Or on the Map tab: hold a spot for a moment, slide to a group, and let go.</Text>
             <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
           </View>
         ) : (

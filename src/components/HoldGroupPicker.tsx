@@ -1,4 +1,4 @@
-// [OWNER: MAP] Hold a finger on the map for 1 s → a list of your groups pops up next to it.
+// [OWNER: MAP] Hold a finger on the map for 0.4 s → a list of your groups pops up next to it.
 // Slide onto a group and let go to drop that group's meeting place there. Letting go without
 // sliding leaves the list open so you can tap instead. With only one option, it skips the list.
 // Built on plain touch events (no extra native deps): touches inside the MapView bubble up to this wrapper's onTouch* handlers.
