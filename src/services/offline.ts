@@ -15,11 +15,12 @@ export async function loadSnapshot(): Promise<OfflineSnapshot | null> {
   }
 }
 
-export async function saveSnapshot(snap: Omit<OfflineSnapshot, 'version' | 'savedAt'>): Promise<void> {
+export async function persistSnapshot(snap: Omit<OfflineSnapshot, 'version' | 'savedAt'>): Promise<void> {
   const full: OfflineSnapshot = { ...snap, version: 1, savedAt: Date.now() };
-  try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(full));
-  } catch (e) {
-    console.warn('saveSnapshot failed', e);
-  }
+  await AsyncStorage.setItem(KEY, JSON.stringify(full));
+}
+
+export async function saveSnapshot(snap: Omit<OfflineSnapshot, 'version' | 'savedAt'>): Promise<void> {
+  try { await persistSnapshot(snap); }
+  catch (e) { console.warn('saveSnapshot failed', e); }
 }

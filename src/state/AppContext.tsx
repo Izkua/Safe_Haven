@@ -80,6 +80,7 @@ export interface AppActions {
   triggerAlert(alert: HazardAlert): Promise<void>;
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
+  setPreparedOffline(route: Route, tiles: TileRegion | null): void;
 }
 
 const Ctx = createContext<{ state: AppState; actions: AppActions } | null>(null);
@@ -319,6 +320,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       dismissAlert() {
         set({ activeAlert: null });
+      },
+      setPreparedOffline(route, tiles) {
+        set({ route, tiles, routeIsCached: false });
       },
       setTiles(tiles) {
         set({ tiles });

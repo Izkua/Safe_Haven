@@ -67,6 +67,7 @@ export interface HazardAlert {
 }
 
 export interface TileRegion {
+  cacheFormat?: 'native-v1';
   centers?: LatLng[];
   pathTemplate?: string;
   attribution?: string;
