@@ -36,7 +36,7 @@ export default function TabsLayout() {
           tabBarAccessibilityLabel: helpCount > 0 ? `Group, ${helpCount} ${helpCount === 1 ? 'person needs' : 'people need'} help` : 'Group',
         }}
       />
-      <Tabs.Screen name="info" options={{ title: 'First aid', tabBarIcon: icon('medkit', 'medkit-outline') }} />
+      <Tabs.Screen name="announcements" options={{ title: 'Announcements', tabBarIcon: icon('megaphone', 'megaphone-outline') }} />
     </Tabs>
   );
 }

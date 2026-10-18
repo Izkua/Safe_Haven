@@ -1,5 +1,5 @@
-// [OWNER: UI] Settings: your name, permissions, appearance, offline, about. Opened from the gear on
-// the First aid tab. Kept short on purpose: the app should need almost no setup in an emergency.
+// [OWNER: UI] Settings: your name, permissions, appearance, first aid, offline, about. Opened from the
+// gear on the Announcements tab. Kept short on purpose: the app should need almost no setup in an emergency.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -210,6 +210,15 @@ export default function SettingsScreen() {
           })}
         </View>
 
+        <Text style={styles.heading} accessibilityRole="header">First aid</Text>
+        <BigButton
+          label="First aid guides"
+          icon="medkit-outline"
+          variant="secondary"
+          accessibilityHint="CPR, choking and what to do in each kind of disaster. Works without signal."
+          onPress={() => router.push('/first-aid')}
+        />
+
         <Text style={styles.heading} accessibilityRole="header">Offline</Text>
         <BigButton
           label="Offline readiness"
@@ -284,7 +293,7 @@ function PermissionRow(p: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  pad: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
+  pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48 },
   flex: { flex: 1 },
   heading: { marginTop: 28, marginBottom: 10, fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   fieldLabel: { marginBottom: 8, fontSize: 15, color: colors.muted },

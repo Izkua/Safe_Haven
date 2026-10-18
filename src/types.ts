@@ -45,6 +45,26 @@ export interface Group {
   drill?: GroupDrill | null;
 }
 
+/** An announcement to a group (stored at groups/{groupId}/announcements/{id}). */
+export interface Announcement {
+  id: string;
+  groupId: string;
+  /** Group name at send time, so saved announcements still say where they came from. */
+  groupName: string;
+  /** The headline, shown bold. */
+  title: string;
+  /** Optional extra line, shown in italics. */
+  details: string;
+  senderId: string;
+  senderName: string;
+  /** ms epoch, set by the sender's phone */
+  sentAt: number;
+  /** uids of members who dismissed it ("seen"). Missing on announcements saved by older builds. */
+  ackedBy?: string[];
+  /** Who it was sent to (group members at send time, minus the sender). Drives "seen by". */
+  recipientIds?: string[];
+}
+
 /** A practice drill shared with the whole group (stored on the group doc). */
 export interface GroupDrill {
   id: string;

@@ -9,6 +9,7 @@ import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 // @ts-ignore getReactNativePersistence is only in firebase's RN typings
 import { getAuth, getReactNativePersistence, initializeAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import {
+  addDoc,
   arrayRemove,
   arrayUnion,
   collection,
@@ -19,6 +20,7 @@ import {
   initializeFirestore,
   limit,
   onSnapshot,
+  orderBy,
   query,
   setDoc,
   updateDoc,
@@ -26,7 +28,7 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import type { Group, GroupDrill, LatLng, Member, MemberStatus, Place } from '@/types';
+import type { Announcement, Group, GroupDrill, LatLng, Member, MemberStatus, Place } from '@/types';
 
 const config = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -355,4 +357,65 @@ export async function addSafeArea(groupId: string, place: Place): Promise<void> 
   const firestore = getDb();
   if (!firestore) return;
   fire('addSafeArea', updateDoc(doc(firestore, 'groups', groupId), { safeAreas: arrayUnion(place) }));
+}
+
+// ---- Announcements ----
+// Stored at groups/{groupId}/announcements/{id}. Only members can read or post (firestore.rules).
+// sentAt is the sender's clock, so an announcement queued offline still sorts correctly.
+
+/** Newest announcements fetched per group (the phone keeps the last 10 overall). */
+export const ANNOUNCEMENTS_FETCHED = 10;
+
+/** Live latest announcements for one group sent at or after `since` (ms), newest first.
+ *  `fromServer` is false while the list is only from the local cache. Never throws; errors are logged. */
+export function subscribeAnnouncements(
+  groupId: string,
+  since: number,
+  cb: (items: Announcement[], fromServer: boolean) => void,
+): () => void {
+  const firestore = getDb();
+  if (!firestore) return () => {};
+  return onSnapshot(
+    query(
+      collection(firestore, 'groups', groupId, 'announcements'),
+      where('sentAt', '>=', since),
+      orderBy('sentAt', 'desc'),
+      limit(ANNOUNCEMENTS_FETCHED),
+    ),
+    { includeMetadataChanges: true },
+    (snap) =>
+      cb(
+        snap.docs.map((d) => {
+          const a = d.data();
+          return {
+            id: d.id,
+            groupId,
+            groupName: String(a.groupName ?? ''),
+            title: String(a.title ?? ''),
+            details: String(a.details ?? ''),
+            senderId: String(a.senderId ?? ''),
+            senderName: String(a.senderName ?? 'Someone'),
+            sentAt: Number(a.sentAt ?? 0),
+            ackedBy: Array.isArray(a.ackedBy) ? a.ackedBy.map(String) : [],
+            recipientIds: Array.isArray(a.recipientIds) ? a.recipientIds.map(String) : undefined,
+          } satisfies Announcement;
+        }),
+        !snap.metadata.fromCache,
+      ),
+    (e) => console.warn('subscribeAnnouncements', e.message),
+  );
+}
+
+/** Posts an announcement. Offline it's queued by Firestore and sent on reconnect. Never throws. */
+export async function sendAnnouncement(groupId: string, a: Omit<Announcement, 'id' | 'groupId' | 'ackedBy'>): Promise<void> {
+  const firestore = getDb();
+  if (!firestore) return;
+  fire('sendAnnouncement', addDoc(collection(firestore, 'groups', groupId, 'announcements'), a));
+}
+
+/** Marks an announcement as seen by me (adds my uid to ackedBy). Queued offline. Never throws. */
+export async function ackAnnouncement(groupId: string, announcementId: string, uid: string): Promise<void> {
+  const firestore = getDb();
+  if (!firestore) return;
+  fire('ackAnnouncement', updateDoc(doc(firestore, 'groups', groupId, 'announcements', announcementId), { ackedBy: arrayUnion(uid) }));
 }

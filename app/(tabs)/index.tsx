@@ -3,7 +3,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
-import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+import MapView, { Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { DangerBanner } from '@/components/DangerBanner';
@@ -11,6 +11,7 @@ import { GroupFilter } from '@/components/GroupFilter';
 import { HoldGroupPicker, type PickOption } from '@/components/HoldGroupPicker';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { ViewMarker } from '@/components/ViewMarker';
 import { distanceM, formatAge, formatDistance, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { onMapFocusRequest, takeMapFocus } from '@/lib/mapFocus';
@@ -401,21 +402,21 @@ export default function MapScreen() {
 
         {meetingMarkers.map((m) => (
           // Re-keyed on color: custom marker views aren't reliably redrawn in place.
-          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.4} onPress={() => onMeetingPress(m)}>
+          <ViewMarker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.4} onPress={() => onMeetingPress(m)}>
             <View style={[styles.meetingMarker, m.color ? { backgroundColor: m.color, borderColor: '#FFFFFF' } : null]} />
-          </Marker>
+          </ViewMarker>
         ))}
 
         {pendingPin && (
-          <Marker coordinate={pendingPin} title="New meeting point" description="Not saved yet" anchor={{ x: 0.5, y: 0.5 }}>
+          <ViewMarker coordinate={pendingPin} title="New meeting point" description="Not saved yet" anchor={{ x: 0.5, y: 0.5 }}>
             <View style={[styles.meetingMarker, styles.pendingMarker]} />
-          </Marker>
+          </ViewMarker>
         )}
 
         {group?.safeAreas.map((p) => (
-          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => { if (!isRoutedTo(p)) pick(p, 'Safe area'); }}>
+          <ViewMarker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => { if (!isRoutedTo(p)) pick(p, 'Safe area'); }}>
             <View style={styles.safeMarker} />
-          </Marker>
+          </ViewMarker>
         ))}
 
         {shownMembers.map((m) => {
@@ -424,7 +425,7 @@ export default function MapScreen() {
           const color = memberColor(m.uid, colorOrder);
           const help = m.status === 'need_help';
           return (
-            <Marker
+            <ViewMarker
               // Custom marker views aren't reliably redrawn in place: re-key on what the pin shows so a
               // status/name/color change remounts it immediately.
               key={`${m.uid}-${m.status}-${m.name}-${color}-${m.photo?.length ?? 0}`}
@@ -435,7 +436,7 @@ export default function MapScreen() {
               opacity={age > STALE_MS && !help ? 0.45 : 1}
             >
               <MemberPin name={m.name} color={color} status={m.status} photo={m.photo} />
-            </Marker>
+            </ViewMarker>
           );
         })}
       </MapView>

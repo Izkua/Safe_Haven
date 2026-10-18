@@ -1,12 +1,14 @@
 // Single app store shared by every screen. Services write into it; screens read from it.
 // Keeps an offline snapshot on disk so the app is useful with zero network after relaunch.
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { distanceM, formatDistance, MAX_WALK_M, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
-import { DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
+import { DETAILS_MAX, mergeAnnouncements, SEEN_CAP, TITLE_MAX, type SavedAnnouncement } from '@/lib/announcements';
+import { DEMO_ANNOUNCEMENT, DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
 import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
 import * as fb from '@/services/firebase';
@@ -14,7 +16,10 @@ import * as loc from '@/services/location';
 import { loadSnapshot, saveSnapshot } from '@/services/offline';
 import { loadSavedTileRegion } from '@/services/tiles';
 import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute, NoWalkingRouteError } from '@/services/routing';
-import type { Group, GroupDrill, HazardAlert, HazardType, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
+import type { Announcement, Group, GroupDrill, HazardAlert, HazardType, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
+
+/** [UI] Where the last 10 announcements (and ids already seen) are kept, on this phone only. */
+const ANNOUNCEMENTS_KEY = 'safehaven.announcements.v1';
 
 export const DEMO_MODE = !fb.isFirebaseConfigured;
 
@@ -67,6 +72,8 @@ export interface AppState {
   activeAlert: HazardAlert | null;
   isOnline: boolean;
   lastSyncedAt: number | null;
+  /** [UI] The last 10 announcements from any of my groups, newest first (kept on this phone). */
+  announcements: SavedAnnouncement[];
 }
 
 type Action =
@@ -98,6 +105,7 @@ const initial: AppState = {
   activeAlert: null,
   isOnline: true,
   lastSyncedAt: null,
+  announcements: [],
 };
 
 /** Keeps `group`, `activeGroupId` and `visibleGroupIds` consistent with `groups`. */
@@ -169,6 +177,10 @@ export interface AppActions {
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
   setPreparedOffline(route: Route, tiles: TileRegion | null): void;
+  /** [UI] Send an announcement to a group (default: the current one). False if empty or not signed in. */
+  sendAnnouncement(title: string, details?: string, groupId?: string): Promise<boolean>;
+  /** [UI] Hide an announcement's banner (it stays in the saved list). */
+  dismissAnnouncement(id: string): void;
 }
 
 const Ctx = createContext<{ state: AppState; actions: AppActions } | null>(null);
@@ -185,6 +197,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // [UI] Last meeting point seen per group. The first snapshot of a group only records it (no
   // notification on launch); later changes by someone else notify.
   const seenMeetings = useRef(new Map<string, string>());
+  // [UI] Announcement ids already handled (persisted), so none alerts twice.
+  const seenAnnouncements = useRef<string[]>([]);
+  // [UI] When this phone first had each group; announcements sent before that never pop up.
+  const groupJoinedAt = useRef<Record<string, number>>({});
+  // [UI] Groups just joined: whatever their first server snapshot holds was already there, so it is
+  // recorded as seen and never shown (doesn't rely on phones' clocks agreeing).
+  const baselineGroups = useRef(new Set<string>());
+  const announcementsLoaded = useRef(false);
   // Lets the group listener (set up before `actions`) re-route when the meeting point moves.
   const actionsRef = useRef<AppActions | null>(null);
 
@@ -312,9 +332,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               else set({ route: null });
             }
           }
-          // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
+          // [ALERTS] A drill someone else started: show it here too, once, while it's still recent,
+          // and only if it started after this phone joined the group (no old drills on joining).
           const d = group.drill;
-          if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
+          const joinedAt = groupJoinedAt.current[group.id] ?? 0;
+          if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS && d.at >= joinedAt) {
             seenDrills.current.add(d.id);
             const alert = drillAlert(d);
             set({ activeAlert: alert });
@@ -336,6 +358,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
       set({ members: all.filter((m) => m.uid !== authedUid), lastSyncedAt: Date.now(), ...(me ? { myStatus: me.status } : {}) });
     });
   }, [memberKey, authedUid, set]);
+
+  // 4b. [UI] Announcements: saved list + seen ids live on this phone; one listener per group.
+  const persistAnnouncements = useCallback((list: SavedAnnouncement[]) => {
+    AsyncStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify({ saved: list, seen: seenAnnouncements.current, joinedAt: groupJoinedAt.current })).catch(() => {});
+  }, []);
+  const receiveAnnouncements = useCallback((incoming: Announcement[]) => {
+    if (!announcementsLoaded.current) return; // wait for the saved list so nothing alerts twice
+    const r = mergeAnnouncements(stateRef.current.announcements, seenAnnouncements.current, incoming, stateRef.current.myUid, Date.now(), groupJoinedAt.current);
+    seenAnnouncements.current = r.seen;
+    set({ announcements: r.saved });
+    persistAnnouncements(r.saved);
+    // One notification per new announcement (the banner itself shows the newest undismissed).
+    for (const a of r.alerts) alerts.notify(`${a.senderName} to ${a.groupName}`, a.details ? `${a.title}\n${a.details}` : a.title).catch(() => {});
+  }, [set, persistAnnouncements]);
+  /** [UI] Records that this phone joined a group now (before its announcement listener starts). */
+  const markJoined = useCallback((groupId: string) => {
+    groupJoinedAt.current = { ...groupJoinedAt.current, [groupId]: Date.now() };
+    baselineGroups.current.add(groupId);
+    persistAnnouncements(stateRef.current.announcements);
+  }, [persistAnnouncements]);
+  const [announcementsReady, setAnnouncementsReady] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(ANNOUNCEMENTS_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        const data = JSON.parse(raw) as { saved?: SavedAnnouncement[]; seen?: string[]; joinedAt?: Record<string, number> };
+        seenAnnouncements.current = data.seen ?? [];
+        groupJoinedAt.current = data.joinedAt ?? {};
+        set({ announcements: data.saved ?? [] });
+      })
+      .catch(() => {})
+      .finally(() => {
+        announcementsLoaded.current = true;
+        setAnnouncementsReady(true);
+      });
+  }, [set]);
+  useEffect(() => {
+    if (!announcementsReady || !groupIdsKey || !authedUid || DEMO_MODE) return;
+    // Stamp newly joined groups before listening (and forget left ones, so a rejoin starts fresh).
+    const ids = groupIdsKey.split(',');
+    const prev = groupJoinedAt.current;
+    const next = Object.fromEntries(ids.map((id) => [id, prev[id] ?? Date.now()]));
+    for (const id of ids) if (!(id in prev)) baselineGroups.current.add(id);
+    if (ids.length !== Object.keys(prev).length || ids.some((id) => !(id in prev))) {
+      groupJoinedAt.current = next;
+      persistAnnouncements(stateRef.current.announcements);
+    }
+    // Only ask for announcements sent since this phone joined each group.
+    const unsubs = ids.map((id) =>
+      fb.subscribeAnnouncements(id, next[id], (items, fromServer) => {
+        if (!baselineGroups.current.has(id)) return receiveAnnouncements(items);
+        seenAnnouncements.current = [...new Set([...seenAnnouncements.current, ...items.map((a) => a.id)])].slice(-SEEN_CAP);
+        if (fromServer) baselineGroups.current.delete(id);
+        persistAnnouncements(stateRef.current.announcements);
+      }),
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [announcementsReady, groupIdsKey, authedUid, receiveAnnouncements, persistAnnouncements]);
 
   // 5. Alert polling while online.
   useEffect(() => {
@@ -524,6 +604,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.createGroup(uid, name).catch(() => null);
+        if (g) markJoined(g.id);
         if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
@@ -531,6 +612,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.joinGroup(uid, code.trim().toUpperCase()).catch(() => null);
+        // Fresh join time even if you were in this group before, so its past announcements stay hidden.
+        if (g) markJoined(g.id);
+        // [ALERTS] A drill that was already running before you joined isn't shown to you.
+        if (g?.drill) seenDrills.current.add(g.drill.id);
         if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
@@ -538,6 +623,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { group, myUid } = s();
         if (!group) return;
         if (myUid && !DEMO_MODE) void fb.leaveGroup(myUid, group.id);
+        const { [group.id]: _left, ...stillIn } = groupJoinedAt.current;
+        groupJoinedAt.current = stillIn;
+        persistAnnouncements(s().announcements);
         dispatch({ type: 'removeGroup', id: group.id });
       },
       selectGroup(id) {
@@ -576,8 +664,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTiles(tiles) {
         set({ tiles });
       },
+      async sendAnnouncement(title, details = '', groupId) {
+        const { myUid, myName, group, groups } = s();
+        const target = groups.find((g) => g.id === (groupId ?? group?.id));
+        const headline = title.trim().slice(0, TITLE_MAX);
+        if (!target || !headline) return false;
+        const a: Announcement = {
+          id: `local-${Date.now()}`,
+          groupId: target.id,
+          groupName: target.name,
+          title: headline,
+          details: details.trim().slice(0, DETAILS_MAX),
+          senderId: myUid ?? 'me',
+          senderName: myName,
+          sentAt: Date.now(),
+          recipientIds: target.memberIds.filter((id) => id !== (myUid ?? 'me')),
+        };
+        if (DEMO_MODE) {
+          receiveAnnouncements([a]); // saved as yours (no banner)
+          // Demo-only: Mom "sees" yours after a moment; Sis stays waiting.
+          setTimeout(() => receiveAnnouncements([{ ...a, ackedBy: ['mom'] }]), 2500);
+          // Demo-only: an announcement from Mom arrives, so the banner + notification can be tried.
+          setTimeout(() => receiveAnnouncements([{ ...DEMO_ANNOUNCEMENT, id: `demo-${Date.now()}`, sentAt: Date.now() }]), 4000);
+          return true;
+        }
+        if (!myUid) return false;
+        const { id: _local, groupId: gid, ...payload } = a;
+        await fb.sendAnnouncement(gid, payload);
+        return true;
+      },
+      dismissAnnouncement(id) {
+        const { myUid, announcements } = s();
+        const target = announcements.find((a) => a.id === id);
+        if (!target) return;
+        // Dismissing counts as "seen": the sender sees who has and hasn't.
+        const ack = !!myUid && target.senderId !== myUid && !target.ackedBy?.includes(myUid);
+        const next = announcements.map((a) =>
+          a.id === id ? { ...a, dismissed: true, ackedBy: ack ? [...(a.ackedBy ?? []), myUid!] : a.ackedBy } : a,
+        );
+        set({ announcements: next });
+        persistAnnouncements(next);
+        if (ack && !DEMO_MODE) void fb.ackAnnouncement(target.groupId, id, myUid!);
+      },
     };
-  }, [set, beginRouteRequest]);
+  }, [set, beginRouteRequest, receiveAnnouncements, persistAnnouncements, markJoined]);
 
   actionsRef.current = actions;
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
