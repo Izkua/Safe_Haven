@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
+import { requestMapFocus } from '@/lib/mapFocus';
 import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
@@ -82,9 +83,13 @@ export default function GroupScreen() {
   };
   const pickGroup = (id: string) => {
     tap();
+    const switching = id !== group?.id;
     actions.selectGroup(id);
     setAdding(false);
     open('none');
+    // Switching groups: the Map shows that group's meeting point next time it's opened (no route started).
+    const g = groups.find((x) => x.id === id);
+    if (switching && g?.meetingPlace) requestMapFocus({ place: { ...g.meetingPlace, id: `meet-${g.id}` }, label: `${g.name} meeting point` });
   };
 
   // Group switcher: one chip per group, plus "Add group".
