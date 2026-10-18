@@ -170,15 +170,23 @@ export default function MapScreen() {
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
 
-  // [UI] "Needs help" banner: frame me and everyone who needs help (whose pin is on the map), so you
-  // can see where they are relative to you. No pins to show (no location yet, or their group is
-  // unchecked in the filter): fall back to the Group tab, which lists them.
+  // [UI] "Needs help" banner: frame me and everyone who needs help (whose pin is on the map), and
+  // route me to the nearest of them. No pins to show (no location yet, or their group is unchecked
+  // in the filter): fall back to the Group tab, which lists them.
   const frameNeedHelp = () => {
-    const helpPins = shownMembers.filter((m) => m.status === 'need_help' && m.location).map((m) => m.location!);
+    const helpMembers = shownMembers.filter((m) => m.status === 'need_help' && m.location);
+    const helpPins = helpMembers.map((m) => m.location!);
     if (!helpPins.length) {
       router.navigate('/group');
       return;
     }
+    // Walk to the closest person who needs help (to where they last shared their location).
+    const nearest = myLocation
+      ? helpMembers.reduce((a, b) => (distanceM(myLocation, b.location!) < distanceM(myLocation, a.location!) ? b : a))
+      : helpMembers[0];
+    const target: Place = { id: `member-${nearest.uid}`, name: nearest.name, coord: nearest.location!, type: 'custom' };
+    const alreadyThere = route?.targetId === target.id && route.to.latitude === target.coord.latitude && route.to.longitude === target.coord.longitude;
+    if (!alreadyThere) void actions.routeTo(target);
     const coords = myLocation ? [myLocation, ...helpPins] : helpPins;
     if (coords.length === 1) {
       mapRef.current?.animateToRegion({ ...coords[0], latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
