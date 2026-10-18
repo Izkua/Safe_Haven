@@ -25,7 +25,7 @@ test('nearest-address formatting', () => {
 test('meeting point moved notification', () => {
   const place = { ...base, name: 'Front lawn', setByName: 'Sam', setAt: now };
   expect(meetingMovedNotice('Family', place, '4060 George Washington Ln NE, Seattle')).toEqual({
-    title: 'Family: meeting point "Front lawn" moved',
+    title: 'Family: meeting point moved',
     body: 'Sam set it to 4060 George Washington Ln NE, Seattle.',
   });
   // No address found: coordinates rather than nothing.

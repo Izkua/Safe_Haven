@@ -31,10 +31,10 @@ export function formatCoord(c: LatLng): string {
   return `${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`;
 }
 
-/** Family: meeting point "Front lawn" moved. Sam set it to 4060 George Washington Ln NE, Seattle. */
+/** Family: meeting point moved. Sam set it to 4060 George Washington Ln NE, Seattle. */
 export function meetingMovedNotice(groupName: string, place: Place, where: string | null): { title: string; body: string } {
   return {
-    title: `${groupName}: meeting point "${place.name}" moved`,
+    title: `${groupName}: meeting point moved`,
     body: `${place.setByName || 'Someone'} set it to ${where || place.address || formatCoord(place.coord)}.`,
   };
 }
