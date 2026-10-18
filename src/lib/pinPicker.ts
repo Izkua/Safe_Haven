@@ -1,6 +1,6 @@
 // [OWNER: MAP] Geometry for the hold-and-slide group picker on the map (pure, so it's testable).
 
-export const HOLD_MS = 1000;
+export const HOLD_MS = 400;
 /** A finger that moves more than this before HOLD_MS is panning the map, not dropping a pin. */
 export const MOVE_TOLERANCE = 10;
 export const ITEM_H = 48;

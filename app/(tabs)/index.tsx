@@ -1,4 +1,4 @@
-// [OWNER: MAP/OFFLINE] Main map. Hold 1 s, slide to a group, let go = set that group's meeting place.
+// [OWNER: MAP/OFFLINE] Main map. Hold 0.4 s, slide to a group, let go = set that group's meeting place.
 // Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -387,7 +387,7 @@ export default function MapScreen() {
                 ) : (
                   <BigButton label="Use where I am now" icon="locate" onPress={saveHere} />
                 )}
-                <Text style={styles.summary}>Or close this and hold a spot on the map for 1 second.</Text>
+                <Text style={styles.summary}>Or close this and hold a spot on the map for a moment.</Text>
               </>
             )}
             <BigButton label="Cancel" variant="plain" disabled={finding} onPress={() => setNaming(null)} />
