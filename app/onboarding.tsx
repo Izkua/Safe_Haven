@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { useOnboarding } from '@/components/OnboardingGate';
 import { requestNotificationPermission } from '@/services/alerts';
-import { requestForegroundPermission } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, radius } from '@/theme';
 
@@ -98,7 +97,7 @@ export default function OnboardingScreen() {
               allowLabel="Allow location"
               grantedText="Location is on."
               deniedText="Location is off. You can still use SafeHaven, but you won't appear on the map and routes won't start from where you are."
-              onAllow={() => askPermission(requestForegroundPermission, setLocationPerm)}
+              onAllow={() => askPermission(actions.enableLocation, setLocationPerm)}
               onSkip={next}
             />
           </Page>

@@ -13,7 +13,7 @@ import { pickAvatar, type AvatarSource } from '@/lib/avatar';
 import { tap } from '@/lib/haptics';
 import { OFFICIAL_NOTE } from '@/lib/hazards';
 import { hasNotificationPermission, notificationsAvailable, requestNotificationPermission } from '@/services/alerts';
-import { hasForegroundPermission, requestForegroundPermission } from '@/services/location';
+import { hasForegroundPermission } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, memberColor, minTarget, radius } from '@/theme';
 
@@ -180,7 +180,7 @@ export default function SettingsScreen() {
             label="Location"
             on={perms?.location}
             offText="You won't appear on your group's map, and routes can't start from where you are."
-            onTurnOn={() => turnOn(requestForegroundPermission)}
+            onTurnOn={() => turnOn(actions.enableLocation)}
           />
           <View style={styles.rule} />
           <PermissionRow
