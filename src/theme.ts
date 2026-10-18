@@ -135,6 +135,17 @@ export function urgencyFor(severity: AlertSeverity): Urgency {
 // enough for a light initial on top.
 export const memberPalette = ['#00796b', '#e65100', '#c2185b', '#3949ab', '#6d4c41', '#00838f', '#827717', '#546e7a'];
 
+// [UI] One color per group, for its meeting point on the map and its chip on the Group tab.
+// No red / green / amber: those mean danger / safe / watch. Dark enough for a white outline.
+export const groupPalette = ['#2F6FED', '#8E44AD', '#00897B', '#D81B60', '#3949AB', '#795548'];
+
+/** Stable color per group: by its position in my groups list, hash as fallback. */
+export function groupColor(groupId: string, groupIds: string[]): string {
+  let i = groupIds.indexOf(groupId);
+  if (i < 0) i = [...groupId].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0);
+  return groupPalette[i % groupPalette.length];
+}
+
 /** Stable color per member: by join order in the group (unique up to 8 members), hash as fallback. */
 export function memberColor(uid: string, memberIds: string[]): string {
   let i = memberIds.indexOf(uid);

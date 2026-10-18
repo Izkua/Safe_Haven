@@ -11,7 +11,7 @@ import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
 import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors, minTarget, radius, statusColor } from '@/theme';
+import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
 import type { LatLng, Member } from '@/types';
 
 const STALE_MS = 60 * 60_000;
@@ -101,6 +101,8 @@ export default function GroupScreen() {
             accessibilityState={{ selected: current }}
             accessibilityLabel={`${g.name}, ${g.memberIds.length} ${g.memberIds.length === 1 ? 'person' : 'people'}`}
           >
+            {/* The group's color: its meeting point on the map uses it too. */}
+            <View style={[styles.chipDot, { backgroundColor: groupColor(g.id, groups.map((x) => x.id)) }]} />
             <Text style={[styles.chipText, current && styles.chipTextOn]}>{g.name}</Text>
             <Text style={[styles.chipCount, current && styles.chipTextOn]}>{g.memberIds.length}</Text>
           </Pressable>
@@ -360,6 +362,7 @@ const styles = StyleSheet.create({
   chips: { gap: 8, paddingBottom: 16 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.card },
   chipOn: { backgroundColor: colors.primary },
+  chipDot: { width: 12, height: 12, borderRadius: 3, borderWidth: 1.5, borderColor: '#FFFFFF', transform: [{ rotate: '45deg' }] },
   chipText: { fontSize: 15, fontWeight: '600', color: colors.text },
   chipCount: { fontSize: 13, fontWeight: '600', color: colors.muted, fontVariant: ['tabular-nums'] },
   chipTextOn: { color: colors.onPrimary },

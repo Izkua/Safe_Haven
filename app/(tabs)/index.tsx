@@ -16,7 +16,7 @@ import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { UW_CENTER } from '@/mocks/demo';
 import { geocodeAddress } from '@/services/location';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
-import { colors, mapOverlayColors, memberColor, radius } from '@/theme';
+import { colors, groupColor, mapOverlayColors, memberColor, radius } from '@/theme';
 import type { LatLng, Place } from '@/types';
 
 const STALE_MS = 15 * 60_000;
@@ -177,13 +177,14 @@ export default function MapScreen() {
     }
   };
 
-  // Each group has its own meeting place: show the current group's plus every checked group's.
+  // Each group has its own meeting place (in that group's color): the current group's plus every checked group's.
+  const groupIds = groups.map((g) => g.id);
   const meetingMarkers = groups.length
     ? groups
         .filter((g) => g.meetingPlace && (g.id === group?.id || visibleGroupIds.includes(g.id)))
-        .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id }))
+        .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id, color: groupColor(g.id, groupIds) as string | null }))
     : meetingPlace
-      ? [{ key: 'meet-personal', place: meetingPlace, description: 'Personal meeting place', current: true }]
+      ? [{ key: 'meet-personal', place: meetingPlace, description: 'Personal meeting place', current: true, color: null as string | null }]
       : [];
 
   return (
@@ -241,8 +242,9 @@ export default function MapScreen() {
         )}
 
         {meetingMarkers.map((m) => (
-          <Marker key={m.key} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.7}>
-            <View style={styles.meetingMarker} />
+          // Re-keyed on color: custom marker views aren't reliably redrawn in place.
+          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.7}>
+            <View style={[styles.meetingMarker, m.color ? { backgroundColor: m.color, borderColor: '#FFFFFF' } : null]} />
           </Marker>
         ))}
 
