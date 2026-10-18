@@ -13,7 +13,7 @@ import { colors, radius } from '@/theme';
 
 const STEPS = ['welcome', 'name', 'location', 'notifications', 'group'] as const;
 type Step = (typeof STEPS)[number];
-type Permission = 'unasked' | 'asking' | 'denied';
+type Permission = 'unasked' | 'asking' | 'granted' | 'denied';
 
 export default function OnboardingScreen() {
   const { state, actions } = useApp();
@@ -35,8 +35,9 @@ export default function OnboardingScreen() {
   const askPermission = async (request: () => Promise<boolean>, setPerm: (p: Permission) => void) => {
     setPerm('asking');
     const granted = await request().catch(() => false);
+    // Always leave 'asking': coming Back to this step must not show a spinner forever.
+    setPerm(granted ? 'granted' : 'denied');
     if (granted) next();
-    else setPerm('denied');
   };
 
   return (
@@ -95,6 +96,7 @@ export default function OnboardingScreen() {
             <PermissionActions
               perm={locationPerm}
               allowLabel="Allow location"
+              grantedText="Location is on."
               deniedText="Location is off. You can still use SafeHaven, but you won't appear on the map and routes won't start from where you are."
               onAllow={() => askPermission(requestForegroundPermission, setLocationPerm)}
               onSkip={next}
@@ -111,6 +113,7 @@ export default function OnboardingScreen() {
             <PermissionActions
               perm={notifPerm}
               allowLabel="Allow alerts"
+              grantedText="Alerts are on."
               deniedText="Alerts are off. Check the app yourself during an emergency, or turn them on in Settings."
               onAllow={() => askPermission(requestNotificationPermission, setNotifPerm)}
               onSkip={next}
@@ -229,10 +232,22 @@ function GroupStep({ onDone }: { onDone: () => void }) {
 function PermissionActions(props: {
   perm: Permission;
   allowLabel: string;
+  grantedText: string;
   deniedText: string;
   onAllow: () => void;
   onSkip: () => void;
 }) {
+  if (props.perm === 'granted') {
+    return (
+      <>
+        <View style={styles.granted} accessibilityRole="text">
+          <Ionicons name="checkmark-circle" size={22} color={colors.safe} />
+          <Text style={styles.grantedText}>{props.grantedText}</Text>
+        </View>
+        <BigButton label="Continue" onPress={props.onSkip} />
+      </>
+    );
+  }
   if (props.perm === 'denied') {
     return (
       <>
@@ -280,5 +295,7 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.card, color: colors.text, borderRadius: radius, paddingHorizontal: 16, minHeight: 56, fontSize: 17 },
   codeInput: { textAlign: 'center', fontSize: 26, fontWeight: '700', letterSpacing: 6 },
   warn: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  granted: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  grantedText: { color: colors.text, fontSize: 17, fontWeight: '600' },
   error: { color: colors.dangerText, fontSize: 16, fontWeight: '600', textAlign: 'center' },
 });
