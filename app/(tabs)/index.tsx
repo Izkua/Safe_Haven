@@ -23,6 +23,8 @@ import type { LatLng, Place } from '@/types';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
+/** Re-route to a person who needs help once they've moved this far from where the route ends. */
+const FOLLOW_MIN_M = 50;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
@@ -169,6 +171,18 @@ export default function MapScreen() {
   const meetingPlace = group && !currentHidden ? group.meetingPlace : null;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
+
+  // [UI] Walking to someone who needs help (route id "member-<uid>", set by the banner below): follow
+  // them. When their shared location moves more than FOLLOW_MIN_M from the route's end, re-route to
+  // where they are now. Their location updates at most every ~20 m / 60 s, so this stays well
+  // within the routing service's limits.
+  const following = route?.targetId.startsWith('member-') ? members.find((m) => `member-${m.uid}` === route.targetId) : undefined;
+  useEffect(() => {
+    if (!route || !following?.location) return;
+    if (distanceM(route.to, following.location) < FOLLOW_MIN_M) return;
+    void actions.routeTo({ id: route.targetId, name: following.name, coord: following.location, type: 'custom' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [following?.location?.latitude, following?.location?.longitude]);
 
   // [UI] "Needs help" banner: frame me and everyone who needs help (whose pin is on the map), and
   // route me to the nearest of them. No pins to show (no location yet, or their group is unchecked
