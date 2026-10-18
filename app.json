@@ -39,7 +39,7 @@
         "expo-image-picker",
         {
           "photosPermission": "SafeHaven uses a photo you pick as your profile picture, so your group can recognize you.",
-          "cameraPermission": false,
+          "cameraPermission": "SafeHaven uses the camera only when you take a profile picture.",
           "microphonePermission": false
         }
       ]

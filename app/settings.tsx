@@ -9,7 +9,7 @@ import { Avatar } from '@/components/Avatar';
 import { BigButton } from '@/components/BigButton';
 import { useOnboarding } from '@/components/OnboardingGate';
 import { loadAppearancePref, setAppearancePref, type AppearancePref } from '@/lib/appearance';
-import { pickAvatar } from '@/lib/avatar';
+import { pickAvatar, type AvatarSource } from '@/lib/avatar';
 import { tap } from '@/lib/haptics';
 import { OFFICIAL_NOTE } from '@/lib/hazards';
 import { hasNotificationPermission, notificationsAvailable, requestNotificationPermission } from '@/services/alerts';
@@ -39,7 +39,7 @@ export default function SettingsScreen() {
   const [savedName, setSavedName] = useState(false);
   const [phone, setPhone] = useState(state.myPhone ?? '');
   const [savedPhone, setSavedPhone] = useState(false);
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState<AvatarSource | null>(null);
   const [pref, setPref] = useState<AppearancePref | null>(null);
   const [perms, setPerms] = useState<Perms>(null);
 
@@ -78,15 +78,16 @@ export default function SettingsScreen() {
     setTimeout(() => setSavedPhone(false), 2000);
   };
 
-  const changePhoto = async () => {
+  const changePhoto = async (source: AvatarSource) => {
     tap();
-    setPicking(true);
-    const res = await pickAvatar();
-    setPicking(false);
+    setPicking(source);
+    const res = await pickAvatar(source);
+    setPicking(null);
     if (!res) return; // cancelled
     if ('photo' in res) return actions.setPhoto(res.photo);
     if (res.error === 'denied') {
-      Alert.alert('Photo access is off', 'Allow SafeHaven to use your photos in Settings to pick a profile picture.', [
+      const what = source === 'camera' ? 'camera' : 'photos';
+      Alert.alert(`${source === 'camera' ? 'Camera' : 'Photo'} access is off`, `Allow SafeHaven to use your ${what} in Settings to set a profile picture.`, [
         { text: 'Not now', style: 'cancel' },
         { text: 'Open Settings', onPress: () => void Linking.openSettings() },
       ]);
@@ -120,7 +121,8 @@ export default function SettingsScreen() {
         <View style={styles.photoRow}>
           <Avatar name={state.myName === 'Me' ? '?' : state.myName} photo={state.myPhoto} color={memberColor(state.myUid ?? 'me', [])} size={88} />
           <View style={styles.photoBtns}>
-            <BigButton label={state.myPhoto ? 'Change photo' : 'Add photo'} icon="camera-outline" variant="secondary" loading={picking} onPress={() => void changePhoto()} />
+            <BigButton label={state.myPhoto ? 'Take new photo' : 'Take photo'} icon="camera-outline" variant="secondary" loading={picking === 'camera'} disabled={!!picking} onPress={() => void changePhoto('camera')} />
+            <BigButton label="Choose from library" icon="images-outline" variant="secondary" loading={picking === 'library'} disabled={!!picking} onPress={() => void changePhoto('library')} />
             {!!state.myPhoto && <BigButton label="Remove photo" variant="plain" onPress={removePhoto} />}
           </View>
         </View>

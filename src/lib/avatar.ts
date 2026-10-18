@@ -1,4 +1,4 @@
-// [OWNER: UI] Pick a profile picture from the photo library and shrink it so it can live right on the
+// [OWNER: UI] Take or pick a profile picture (camera or photo library) and shrink it so it can live right on the
 // user's Firestore doc (no Storage bucket needed): square crop, 256 px, JPEG, as a data URI (~20-40 KB).
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,16 +7,23 @@ export const AVATAR_PX = 256;
 
 export type PickResult = { photo: string } | { error: 'denied' | 'failed' } | null; // null = cancelled
 
-export async function pickAvatar(): Promise<PickResult> {
+export type AvatarSource = 'camera' | 'library';
+
+export async function pickAvatar(source: AvatarSource = 'library'): Promise<PickResult> {
   try {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const perm =
+      source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return { error: 'denied' };
-    const res = await ImagePicker.launchImageLibraryAsync({
+    const options: ImagePicker.ImagePickerOptions = {
       mediaTypes: ['images'],
       allowsEditing: true, // lets the user crop to a square
       aspect: [1, 1],
       quality: 1,
-    });
+    };
+    const res =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ ...options, cameraType: ImagePicker.CameraType.front }) // selfie camera
+        : await ImagePicker.launchImageLibraryAsync(options);
     if (res.canceled || !res.assets?.[0]) return null;
     const out = await ImageManipulator.manipulateAsync(
       res.assets[0].uri,
