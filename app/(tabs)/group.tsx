@@ -16,7 +16,7 @@ const order = { need_help: 0, unknown: 1, safe: 2 } as const;
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, members, myLocation, myStatus } = state;
+  const { group, members, myLocation, myStatus, isOnline } = state;
   const [code, setCode] = useState('');
   const [newName, setNewName] = useState('');
   const [placeName, setPlaceName] = useState('');
@@ -31,6 +31,7 @@ export default function GroupScreen() {
     if (!ok) setMsg(fail);
   };
   const setHere = () => {
+    if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
     if (!myLocation) return Alert.alert('No location yet', 'Wait for a GPS fix, or long-press the map instead.');
     actions.setMeetingPlace(myLocation, placeName.trim() || 'Meeting place');
     setPlaceName('');
@@ -106,9 +107,9 @@ export default function GroupScreen() {
         <View style={styles.section}>
           <Text style={styles.label}>Meeting point</Text>
           <Text style={styles.sectionTitle}>{group.meetingPlace ? group.meetingPlace.name : 'Not set yet'}</Text>
-          <TextInput style={styles.input} placeholder="Name it, e.g. Front lawn" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} accessibilityLabel="Meeting place name" />
-          <BigButton label="Set to my current location" variant="secondary" onPress={setHere} />
-          <Text style={styles.hint}>Or long-press anywhere on the map.</Text>
+          <TextInput style={[styles.input, !isOnline && { opacity: 0.4 }]} editable={isOnline} placeholder="Name it, e.g. Front lawn" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} accessibilityLabel="Meeting place name" />
+          <BigButton label="Set to my current location" variant="secondary" disabled={!isOnline} onPress={setHere} />
+          <Text style={styles.hint}>{isOnline ? 'Or long-press anywhere on the map.' : 'Meeting place changes are locked while offline.'}</Text>
         </View>
 
         <Pressable

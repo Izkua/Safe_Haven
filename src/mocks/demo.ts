@@ -1,6 +1,7 @@
 // Demo data around UW Seattle. Used when Firebase isn't configured (DEMO MODE)
 // so UI/map work can start before the backend exists.
-import type { Group, HazardAlert, LatLng, Member } from '@/types';
+import { HAZARDS, simulatedArea } from '@/lib/hazards';
+import type { Group, HazardAlert, HazardType, LatLng, Member } from '@/types';
 
 export const UW_CENTER: LatLng = { latitude: 47.6553, longitude: -122.3035 };
 
@@ -28,21 +29,17 @@ export const DEMO_MEMBERS: Member[] = [
   { uid: 'sis', name: 'Sis', location: { latitude: 47.6585, longitude: -122.3005 }, locationTs: now - 25 * 60_000, status: 'need_help' },
 ];
 
-export function makeSimulatedAlert(at: LatLng): HazardAlert {
-  const d = 0.02;
+export function makeSimulatedAlert(at: LatLng, hazard: HazardType = 'earthquake'): HazardAlert {
+  const h = HAZARDS[hazard];
   return {
-    id: `sim-${Date.now()}`,
+    id: `sim-${hazard}-${Date.now()}`,
     source: 'simulated',
-    title: 'Earthquake Warning (SIMULATED)',
-    description: 'M6.8 earthquake detected near Seattle. Strong shaking expected.',
-    instruction: 'Drop, cover, and hold on. When shaking stops, go to your meeting place.',
+    hazard,
+    title: h.simTitle,
+    description: h.simDescription,
+    instruction: h.instruction,
     severity: 'extreme',
-    areas: [[
-      { latitude: at.latitude + d, longitude: at.longitude - d },
-      { latitude: at.latitude + d, longitude: at.longitude + d },
-      { latitude: at.latitude - d, longitude: at.longitude + d },
-      { latitude: at.latitude - d, longitude: at.longitude - d },
-    ]],
+    areas: [simulatedArea(hazard, at)],
     center: at,
     issuedAt: Date.now(),
     expiresAt: null,

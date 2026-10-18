@@ -47,11 +47,14 @@ export interface Route {
 }
 
 export type AlertSource = 'nws' | 'usgs' | 'simulated';
+export type HazardType = 'earthquake' | 'tsunami' | 'flood' | 'wildfire' | 'hurricane' | 'tornado';
 export type AlertSeverity = 'extreme' | 'severe' | 'moderate' | 'minor' | 'unknown';
 
 export interface HazardAlert {
   id: string;
   source: AlertSource;
+  /** Which kind of disaster; drives the safety steps. Optional because some feeds don't say. */
+  hazard?: HazardType;
   title: string;
   description: string;
   instruction: string | null;
@@ -64,6 +67,10 @@ export interface HazardAlert {
 }
 
 export interface TileRegion {
+  centers?: LatLng[];
+  pathTemplate?: string;
+  attribution?: string;
+  attributionUrl?: string;
   center: LatLng;
   radiusKm: number;
   minZoom: number;
@@ -74,6 +81,7 @@ export interface TileRegion {
 
 /** Everything we need to keep guiding the user with zero network. */
 export interface OfflineSnapshot {
+  personalMeetingPlace?: Place | null;
   version: 1;
   myUid: string | null;
   myName: string;

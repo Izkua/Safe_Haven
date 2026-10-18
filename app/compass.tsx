@@ -15,7 +15,7 @@ const WALK_MPS = 1.3;
 const ARRIVED_M = 30;
 
 export default function CompassScreen() {
-  const { group, route, myLocation, isOnline } = useApp().state;
+  const { group, personalMeetingPlace, route, myLocation, isOnline } = useApp().state;
   const [heading, setHeading] = useState(0);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function CompassScreen() {
 
   const target =
     (route && { name: route.targetName, coord: route.to }) ??
-    group?.meetingPlace ??
+    (group ? group.meetingPlace : personalMeetingPlace) ??
     (myLocation && group ? nearestPlace(myLocation, group.safeAreas) : null);
 
   if (!target || !myLocation) {

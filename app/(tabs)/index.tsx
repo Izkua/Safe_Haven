@@ -7,25 +7,25 @@ import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
 import { BigNumber } from '@/components/BigNumber';
+import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, nearestPlace } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
-import { makeSimulatedAlert } from '@/services/alerts';
-import { downloadRegion, estimateTileCount, ONLINE_TILE_URL, TILE_ATTRIBUTION, TILE_PATH_TEMPLATE } from '@/services/tiles';
+import { downloadRegion, localTilePath, ONLINE_TILE_URL, planTiles, TILE_ATTRIBUTION, tileConfigurationError } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
-import { colors, minTarget, radius, statusColor } from '@/theme';
-import type { Member } from '@/types';
+import { colors, memberColor, minTarget, radius } from '@/theme';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
 // Android's Google base map often renders blank in Expo Go (Play services / API key issues).
-// With a tile key configured, draw MapTiler tiles instead — same provider as the offline cache.
+// With a tile key configured, draw configured raster tiles instead — same provider as the offline cache.
 const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
-  const { group, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { group, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const mapRef = useRef<MapView>(null);
+  const downloadBusy = useRef(false);
   const [tileProgress, setTileProgress] = useState<string | null>(null);
 
   // Open the alert screen whenever a new alert arrives.
@@ -33,12 +33,13 @@ export default function MapScreen() {
     if (activeAlert) router.push('/alert');
   }, [activeAlert?.id]);
 
-  const center = myLocation ?? group?.meetingPlace?.coord ?? UW_CENTER;
+  const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
 
   // What the sheet points at: the active route's target, else the meeting place, else the nearest safe area.
   const target =
     (route && { name: route.targetName, coord: route.to, label: 'Heading to' }) ??
-    (group?.meetingPlace && { name: group.meetingPlace.name, coord: group.meetingPlace.coord, label: 'Meeting point' }) ??
+    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: group ? 'Meeting point' : 'My meeting point' }) ??
     (() => {
       const p = myLocation && group ? nearestPlace(myLocation, group.safeAreas) : null;
       return p ? { name: p.name, coord: p.coord, label: 'Nearest safe area' } : null;
@@ -47,18 +48,29 @@ export default function MapScreen() {
   const minutes = route && !route.isStraightLine ? route.durationS / 60 : meters !== null ? meters / WALK_MPS / 60 : null;
   const walk = minutes !== null ? `${Math.max(1, Math.round(minutes))} min walk` : null;
 
-  const onDownloadTiles = async () => {
-    const n = estimateTileCount(center);
-    Alert.alert('Download offline map?', `About ${n} tiles (~${Math.round((n * 15) / 1024)} MB) around you.`, [
+  const onDownloadTiles = () => {
+    if (downloadBusy.current) return;
+    if (!isOnline) { Alert.alert('No connection', 'Connect to the internet before saving a map.'); return; }
+    const configError = tileConfigurationError();
+    if (configError) { Alert.alert('Offline map setup', configError); return; }
+    const meeting = meetingPlace?.coord;
+    let n: number;
+    try { n = planTiles(meeting ? [center, meeting] : [center]).length; }
+    catch (e) { Alert.alert('Cannot save area', (e as Error).message); return; }
+    Alert.alert('Download offline map?', `${n} tiles around you${meeting ? ' and the meeting place' : ''}, about ${Math.ceil(n * 30 / 1024)} MB (estimate). Covers 1.5 km around each point at zoom 12–16.`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Download',
-        onPress: async () => {
-          const region = await downloadRegion(center, (d, t) => setTileProgress(`${d}/${t}`));
-          setTileProgress(null);
-          if (region) actions.setTiles(region);
-        },
-      },
+      { text: 'Download', onPress: async () => {
+        if (downloadBusy.current) return;
+        downloadBusy.current = true;
+        setTileProgress('Starting…');
+        try {
+          const region = await downloadRegion(center, (d, t) => setTileProgress(`${d}/${t}`), meeting);
+          actions.setTiles(region);
+          Alert.alert('Map saved', 'Use Compass to navigate without signal. Only the downloaded areas and zoom levels are available offline.');
+        } catch (e) {
+          Alert.alert('Map not fully saved', e instanceof Error ? e.message : 'Please retry. Completed tiles will be reused.');
+        } finally { downloadBusy.current = false; setTileProgress(null); }
+      } },
     ]);
   };
 
@@ -67,21 +79,27 @@ export default function MapScreen() {
     : route
       ? `Route shown${walk ? ` · ${walk}` : ''}`
       : `Start route${walk ? ` · ${walk}` : ''}`;
+  const attribution = !isOnline ? (tiles?.attribution ?? TILE_ATTRIBUTION) : TILE_ATTRIBUTION;
 
   return (
     <View style={styles.fill}>
       <MapView
         ref={mapRef}
         style={styles.fill}
+        minZoomLevel={!isOnline && tiles ? tiles.minZoom : undefined}
+        maxZoomLevel={!isOnline && tiles ? tiles.maxZoom : undefined}
         showsUserLocation
         showsCompass
         mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
-        onLongPress={(e) => actions.setMeetingPlace(e.nativeEvent.coordinate)}
         mapPadding={{ top: 0, left: 0, right: 0, bottom: 230 }}
+        onLongPress={(e) => {
+          if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
+          void actions.setMeetingPlace(e.nativeEvent.coordinate);
+        }}
       >
         {USE_TILE_BASEMAP && isOnline && <UrlTile urlTemplate={ONLINE_TILE_URL} tileSize={256} maximumZ={19} />}
-        {!isOnline && tiles && <LocalTile pathTemplate={TILE_PATH_TEMPLATE} tileSize={256} />}
+        {!isOnline && tiles && <LocalTile key={tiles.downloadedAt} pathTemplate={localTilePath(tiles)} tileSize={256} />}
 
         {activeAlert?.areas.map((ring, i) => (
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(196,22,28,0.12)" strokeColor={colors.danger} strokeWidth={2} />
@@ -91,8 +109,8 @@ export default function MapScreen() {
           <Polyline coordinates={route.points} strokeColor={colors.text} strokeWidth={4} lineDashPattern={route.isStraightLine ? [10, 8] : undefined} />
         )}
 
-        {group?.meetingPlace && (
-          <Marker coordinate={group.meetingPlace.coord} title={group.meetingPlace.name} description="Meeting place" anchor={{ x: 0.5, y: 0.5 }}>
+        {meetingPlace && (
+          <Marker coordinate={meetingPlace.coord} title={meetingPlace.name} description={group ? 'Group meeting place' : 'Personal meeting place'} anchor={{ x: 0.5, y: 0.5 }}>
             <View style={styles.meetingMarker} />
           </Marker>
         )}
@@ -103,11 +121,32 @@ export default function MapScreen() {
           </Marker>
         ))}
 
-        {members.map((m) => (m.location ? <MemberMarker key={m.uid} m={m} /> : null))}
+        {members.map((m) => {
+          if (!m.location) return null;
+          const age = m.locationTs ? Date.now() - m.locationTs : Infinity;
+          const color = memberColor(m.uid, group?.memberIds ?? []);
+          const help = m.status === 'need_help';
+          return (
+            <Marker
+              // Custom marker views aren't reliably redrawn in place: re-key on what the pin shows so a
+              // status/name/color change remounts it immediately.
+              key={`${m.uid}-${m.status}-${m.name}-${color}`}
+              coordinate={m.location}
+              title={help ? `${m.name} needs help` : m.name}
+              description={`${help ? 'Needs help' : m.status === 'safe' ? 'Safe' : 'No status'} · ${m.locationTs ? formatAge(age) : 'unknown'}`}
+              anchor={{ x: 0.5, y: 0.5 }}
+              opacity={age > STALE_MS && !help ? 0.45 : 1}
+            >
+              <MemberPin name={m.name} color={color} status={m.status} />
+            </Marker>
+          );
+        })}
       </MapView>
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         <OfflineBanner />
+        {!isOnline && tiles && <Text style={styles.notice}>Saved map · {formatAge(Date.now() - tiles.downloadedAt)} · downloaded areas only</Text>}
+        {!isOnline && <Text style={styles.notice}>Meeting place locked while offline</Text>}
         {routingMessage && <Text style={styles.notice}>{routingMessage}</Text>}
         {DEMO_MODE && <Text style={styles.demo}>Demo mode · no Firebase config</Text>}
       </SafeAreaView>
@@ -136,6 +175,8 @@ export default function MapScreen() {
             <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
             {' · '}
             <Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text>
+            {' · '}
+            <Text style={styles.link} onPress={() => Linking.openURL(`https://www.openstreetmap.org/fixthemap?mlat=${route.to.latitude}&mlon=${route.to.longitude}#map=17/${route.to.latitude}/${route.to.longitude}`)}>Fix the map</Text>
           </Text>
         )}
 
@@ -152,38 +193,25 @@ export default function MapScreen() {
         <View style={styles.tools}>
           <ActionButton icon="compass-outline" label="Compass" onPress={() => router.push('/compass')} />
           <ActionButton icon="cloud-download-outline" label={tileProgress ?? (tiles ? 'Map saved' : 'Save map')} onPress={onDownloadTiles} />
-          <ActionButton icon="warning-outline" label="Simulate" color={colors.danger} onPress={() => actions.triggerAlert(makeSimulatedAlert(center))} />
+          <ActionButton icon="warning-outline" label="Simulate" color={colors.danger} onPress={() => router.push('/simulate')} />
         </View>
 
-        {(USE_TILE_BASEMAP || (!isOnline && tiles)) && <Text style={styles.fine}>{TILE_ATTRIBUTION}</Text>}
+        {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution && (
+          <Text
+            style={[styles.fine, styles.link]}
+            onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}
+          >
+            {attribution}
+          </Text>
+        )}
       </View>
     </View>
   );
 }
 
-function MemberMarker({ m }: { m: Member }) {
-  const age = m.locationTs ? Date.now() - m.locationTs : Infinity;
-  const stale = age > STALE_MS;
-  const help = m.status === 'need_help';
-  return (
-    <Marker
-      coordinate={m.location!}
-      title={m.name}
-      description={`${help ? 'Needs help' : m.status === 'safe' ? 'Safe' : 'No status'} · ${m.locationTs ? formatAge(age) : 'unknown'}`}
-      anchor={{ x: 0, y: 0.5 }}
-      opacity={stale && !help ? 0.5 : 1}
-    >
-      <View style={styles.memberWrap}>
-        <View style={[styles.memberDot, m.status === 'unknown' ? styles.memberUnknown : { backgroundColor: statusColor[m.status] }]} />
-        <Text style={[styles.memberTag, help && styles.memberTagHelp]}>{help ? `${m.name} needs help` : m.name}</Text>
-      </View>
-    </Marker>
-  );
-}
-
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.card },
-  top: { position: 'absolute', top: 0, left: 0, right: 0, gap: 0 },
+  top: { position: 'absolute', top: 0, left: 0, right: 0 },
   notice: { backgroundColor: colors.bg, color: colors.text, fontSize: 15, fontWeight: '600', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: colors.text },
   demo: { alignSelf: 'flex-start', margin: 12, backgroundColor: colors.bg, color: colors.text, borderWidth: 1, borderColor: colors.text, fontSize: 13, fontWeight: '600', paddingHorizontal: 8, paddingVertical: 3 },
 
@@ -199,9 +227,4 @@ const styles = StyleSheet.create({
 
   meetingMarker: { width: 22, height: 22, backgroundColor: colors.bg, borderWidth: 2, borderColor: colors.text, transform: [{ rotate: '45deg' }] },
   safeMarker: { width: 14, height: 14, backgroundColor: colors.safe, borderWidth: 1, borderColor: colors.bg },
-  memberWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  memberDot: { width: 16, height: 16, borderWidth: 1, borderColor: colors.bg },
-  memberUnknown: { backgroundColor: colors.bg, borderColor: colors.text },
-  memberTag: { fontSize: 13, fontWeight: '700', color: colors.text, backgroundColor: colors.bg, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
-  memberTagHelp: { backgroundColor: colors.danger, color: colors.onDanger },
 });
