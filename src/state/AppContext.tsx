@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
+import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
 import { DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
@@ -281,8 +282,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           seenMeetings.current.set(group.id, key);
           if (prev !== undefined && prev !== key && mp?.setBy !== stateRef.current.myUid) {
             if (mp) {
-              const who = mp.setByName ?? 'Someone';
-              alerts.notify(`${group.name}: meeting point moved`, `${who} set it to ${mp.name}${mp.address ? ` (${mp.address})` : ''}.`);
+              // Say where it is now: the typed address, else the nearest one (coordinates if lookup fails).
+              const place = mp;
+              void (async () => {
+                const where = place.address ?? (await loc.reverseGeocode(place.coord));
+                const { title, body } = meetingMovedNotice(group.name, place, where);
+                await alerts.notify(title, body);
+              })();
             } else {
               alerts.notify(`${group.name}: meeting point removed`, 'Your group no longer has a meeting point. Check the Group tab.');
             }
