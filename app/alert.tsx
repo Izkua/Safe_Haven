@@ -5,13 +5,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
-import { buzzFor } from '@/lib/haptics';
+import { buzzForAlert } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
+import { savedHaven, usualMeetingPoint } from '@/lib/havens';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { isUserAffected } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
@@ -31,16 +32,19 @@ export default function AlertScreen() {
   const insets = useSafeAreaInsets();
   const a = state.activeAlert;
   const me = state.myLocation;
+  const [adopting, setAdopting] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const endingRef = useRef(false);
   // Unknown location: assume affected, so the user still sees the safety steps.
   const affected = a ? (me ? isUserAffected(a, me) : true) : false;
   // Outside the area the tone drops to "watch": stay ready, no takeover.
   const level = a && affected ? urgencyFor(a.severity) : 'watch';
   const stopBuzz = useRef<() => void>(() => {});
 
-  // Vibrate per urgency; emergency repeats until the user acts or leaves the screen.
+  // A brief first-arrival pattern only; reopening the same warning is silent.
   useEffect(() => {
     if (!a) return;
-    stopBuzz.current = buzzFor(level);
+    stopBuzz.current = buzzForAlert(a.id, level);
     return () => stopBuzz.current();
   }, [a?.id, level]);
 
@@ -53,14 +57,24 @@ export default function AlertScreen() {
     if (router.canDismiss()) router.dismissAll();
     router.navigate('/');
   };
-  const safe = () => {
+  const setStatus = (status: 'safe' | 'need_help') => {
     stopBuzz.current();
-    actions.setStatus('safe');
+    void actions.setStatus(status);
   };
-  const dismiss = () => {
+  const dismiss = async () => {
+    if (endingRef.current || adopting) return;
+    endingRef.current = true;
+    setEnding(true);
     stopBuzz.current();
-    actions.dismissAlert();
-    router.back();
+    try {
+      if (await actions.dismissAlert()) {
+        const drillGroup = a?.groupId ? state.groups.find(g => g.id === a.groupId) : null;
+        const normal = drillGroup ? usualMeetingPoint(drillGroup) : null;
+        if (a?.source === 'simulated' && normal && drillGroup?.id === state.activeGroupId) requestMapFocus({ place: normal, label: normal.name, showMe: true });
+        if (router.canDismiss()) router.dismissAll();
+        router.navigate('/');
+      }
+    } finally { endingRef.current = false; setEnding(false); }
   };
 
   if (!a) {
@@ -77,7 +91,9 @@ export default function AlertScreen() {
   const nowList = affected ? info?.now ?? [a.instruction ?? a.description] : OUTSIDE_NOW;
   const cards = affected ? info?.cards ?? [] : [];
 
-  const group = state.group;
+  const group = a.groupId ? state.groups.find(g => g.id === a.groupId) ?? null : state.group;
+  const suggestion = a.hazard ? savedHaven(group, a.hazard) : null;
+  const usual = group ? usualMeetingPoint(group) : null;
   const best: Place | null = me
     ? a.hazard ? pickSafeTarget(a.hazard, me, group) : group ? nearestPlace(me, reachablePlaces(me, group.safeAreas)) : null
     : null;
@@ -152,17 +168,26 @@ export default function AlertScreen() {
       </ScrollView>
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
-        {/* One main button: the best place for this hazard, else the meeting point. */}
-        {primary && (
-          <AlertButton
-            label={primary === best ? `${info?.goPrefix ?? 'Go to'} ${primary.name}${dist(primary)}` : `Go to meeting point: ${primary.name}${dist(primary)}`}
-            icon="navigate"
-            bg={emergency ? colors.onDanger : colors.primary}
-            fg={emergency ? colors.danger : colors.onPrimary}
-            tall
-            onPress={() => go(primary)}
-          />
-        )}
+        {suggestion && group && a.hazard && <BigButton
+          label={`Go to presaved ${info?.label.toLowerCase() ?? 'disaster'} haven`}
+          icon="flag" loading={adopting} disabled={!state.isOnline || ending}
+          accessibilityHint={`Sets ${suggestion.name} as the shared meeting point and opens the map`}
+          onPress={() => {
+            setAdopting(true);
+            void actions.adoptDisasterHaven(group.id, a.hazard!).then(place => { if (place) go(place); }).finally(() => setAdopting(false));
+          }} />}
+        {group && <BigButton label="Go to group meeting point" icon="navigate-outline" variant="secondary"
+          disabled={!usual || adopting || ending || (!!group.activeHaven && !state.isOnline)}
+          accessibilityHint={usual ? `Go to ${usual.name}` : 'No usual meeting point has been set for this group'}
+          onPress={() => {
+            if (!usual) return;
+            if (!group.activeHaven) { go(usual); return; }
+            setAdopting(true);
+            void actions.restoreUsualMeetingPoint(group.id).then(place => { if (place) go(place); }).finally(() => setAdopting(false));
+          }} />}
+        {suggestion && !state.isOnline && <Text style={{ color: soft }}>Reconnect to update the group meeting point.</Text>}
+        {!group && primary && <AlertButton label={`Go to ${primary.name}${dist(primary)}`} icon="navigate"
+          bg={emergency ? colors.onDanger : colors.primary} fg={emergency ? colors.danger : colors.onPrimary} tall onPress={() => go(primary)} />}
         <View style={styles.btnRow}>
           <AlertButton
             label={state.myStatus === 'safe' ? 'Marked safe' : 'I’m safe'}
@@ -170,25 +195,33 @@ export default function AlertScreen() {
             bg={tonal}
             fg={fg}
             style={styles.half}
-            onPress={safe}
+            selected={state.myStatus === 'safe'}
+            onPress={() => setStatus('safe')}
           />
-          {meeting && meeting !== primary && (
-            <AlertButton label="Meeting point" icon="flag" bg={tonal} fg={fg} style={styles.half} onPress={() => go(meeting)} />
-          )}
+          <AlertButton
+            label="I need help"
+            icon={state.myStatus === 'need_help' ? 'alert-circle' : 'alert-circle-outline'}
+            bg={tonal}
+            fg={fg}
+            style={styles.half}
+            selected={state.myStatus === 'need_help'}
+            onPress={() => setStatus('need_help')}
+          />
         </View>
         {emergency ? (
           <Pressable
             accessibilityRole="button"
             accessibilityHint="Press and hold to dismiss this emergency alert"
-            onLongPress={dismiss}
+            onLongPress={() => void dismiss()}
+            disabled={adopting || ending}
             delayLongPress={800}
             style={styles.dismiss}
           >
-            <Text style={[styles.dismissText, { color: fg }]}>Press and hold to dismiss</Text>
+            <Text style={[styles.dismissText, { color: fg }]}>{ending ? 'Ending drill…' : 'Press and hold to dismiss'}</Text>
           </Pressable>
         ) : (
-          <Pressable accessibilityRole="button" onPress={dismiss} style={styles.dismiss}>
-            <Text style={[styles.dismissText, { color: fg }]}>Dismiss</Text>
+          <Pressable accessibilityRole="button" onPress={() => void dismiss()} disabled={adopting || ending} style={styles.dismiss}>
+            <Text style={[styles.dismissText, { color: fg }]}>{ending ? 'Ending drill…' : 'Dismiss'}</Text>
           </Pressable>
         )}
       </View>
@@ -196,13 +229,14 @@ export default function AlertScreen() {
   );
 }
 
-function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; style?: StyleProp<ViewStyle>; onPress: () => void }) {
+function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; selected?: boolean; style?: StyleProp<ViewStyle>; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={p.label}
+      accessibilityState={{ selected: p.selected }}
       onPress={p.onPress}
-      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, p.style, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, p.style, { borderWidth: p.selected ? 2 : 0, borderColor: p.fg, backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
     >
       <Ionicons name={p.icon} size={22} color={p.fg} />
       <Text style={[styles.btnText, { color: p.fg }]} numberOfLines={2}>{p.label}</Text>

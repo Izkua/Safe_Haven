@@ -19,3 +19,13 @@ test('older snapshots without a personal meeting place still load', async () => 
  getItem.mockResolvedValue(JSON.stringify({ ...old, version: 1, savedAt: 1 }));
  expect(await loadSnapshot()).toMatchObject({ group: null, version: 1 });
 });
+
+test('offline snapshots preserve separate disaster havens for every group', async () => {
+  const groups = ['family', 'friends'].map((id, i) => ({ id, name: id, inviteCode: 'ABCDEF', memberIds: ['me'], meetingPlace: null, safeAreas: [],
+    disasterHavens: { earthquake: { ...place, name: i === 0 ? 'Field' : 'Park' } } }));
+  await saveSnapshot({ ...snapshot, group: groups[0], groups, activeGroupId: 'family' });
+  getItem.mockResolvedValue(setItem.mock.calls[0][1]);
+  const restored = await loadSnapshot();
+  expect(restored?.groups?.map(g => g.disasterHavens?.earthquake?.name)).toEqual(['Field', 'Park']);
+  expect(restored?.groups?.every(g => g.meetingPlace === null)).toBe(true);
+});

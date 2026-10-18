@@ -584,7 +584,7 @@ export default function MapScreen() {
                   onPress={() => router.push('/offline-readiness')}
                 />
               </View>
-              <BigButton label="Practice a drill" icon="warning-outline" variant="alarm" accessibilityHint="Practice a disaster. Your group gets the drill too." onPress={() => router.push('/simulate')} />
+              <BigButton label="Disaster Havens" icon="warning-outline" variant="alarm" accessibilityHint="Save a haven for each disaster and group, or start a practice drill." onPress={() => router.push('/simulate')} />
             </>
           )}
 

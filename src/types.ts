@@ -43,6 +43,11 @@ export interface Group {
   safeAreas: Place[];
   /** Latest practice drill someone started; every member's app shows it once. */
   drill?: GroupDrill | null;
+  /** Prepared choices; saving one does not move the active meeting point. */
+  disasterHavens?: Partial<Record<HazardType, Place>>;
+  /** Retained while a disaster haven is the active shared destination. */
+  usualMeetingPlace?: Place | null;
+  activeHaven?: HazardType | null;
 }
 
 /** An announcement to a group (stored at groups/{groupId}/announcements/{id}). */
@@ -96,6 +101,8 @@ export type AlertSeverity = 'extreme' | 'severe' | 'moderate' | 'minor' | 'unkno
 export interface HazardAlert {
   id: string;
   source: AlertSource;
+  /** Group that started this drill, independent of the currently selected group. */
+  groupId?: string;
   /** Which kind of disaster; drives the safety steps. Optional because some feeds don't say. */
   hazard?: HazardType;
   title: string;

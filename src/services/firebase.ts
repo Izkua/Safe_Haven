@@ -28,7 +28,7 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import type { Announcement, Group, GroupDrill, LatLng, Member, MemberStatus, Place } from '@/types';
+import type { Announcement, Group, GroupDrill, HazardType, LatLng, Member, MemberStatus, Place } from '@/types';
 
 const config = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -136,6 +136,9 @@ function toGroup(id: string, d: DocumentData): Group {
     meetingPlace: d.meetingPlace ?? null,
     safeAreas: d.safeAreas ?? [],
     drill: d.drill ?? null,
+    disasterHavens: d.disasterHavens ?? {},
+    usualMeetingPlace: d.usualMeetingPlace ?? null,
+    activeHaven: d.activeHaven ?? null,
   };
 }
 
@@ -350,7 +353,7 @@ export async function publishStatus(uid: string, status: MemberStatus): Promise<
 export async function setMeetingPlace(groupId: string, place: Place | null): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));
+  fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place, usualMeetingPlace: place, activeHaven: null }));
 }
 
 export async function addSafeArea(groupId: string, place: Place): Promise<void> {
@@ -418,4 +421,23 @@ export async function ackAnnouncement(groupId: string, announcementId: string, u
   const firestore = getDb();
   if (!firestore) return;
   fire('ackAnnouncement', updateDoc(doc(firestore, 'groups', groupId, 'announcements', announcementId), { ackedBy: arrayUnion(uid) }));
+}
+
+/** Only report success once the shared choice has reached the server. */
+export async function saveDisasterHaven(groupId: string, hazard: HazardType, place: Place): Promise<boolean> {
+  const firestore = getDb();
+  if (!firestore) return false;
+  try {
+    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), { [`disasterHavens.${hazard}`]: place }));
+    return true;
+  } catch { return false; }
+}
+/** Confirm all destination fields together, so peers can always restore the usual point. */
+export async function switchMeetingDestination(groupId: string, patch: Pick<Group, 'meetingPlace' | 'usualMeetingPlace' | 'activeHaven'>): Promise<boolean> {
+  const firestore = getDb();
+  if (!firestore) return false;
+  try {
+    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), patch));
+    return true;
+  } catch { return false; }
 }
