@@ -25,7 +25,7 @@ const WALK_MPS = 1.3;
 export default function MapScreen() {
   const { state, actions } = useApp();
   const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
-  const { group, groups, visibleGroupIds, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { group, groups, visibleGroupIds, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const needHelp = members.filter((m) => m.status === 'need_help');
   const mapRef = useRef<MapView>(null);
   // A safe area tapped on the map but not confirmed yet.
@@ -40,9 +40,18 @@ export default function MapScreen() {
   const [naming, setNaming] = useState<{ coord: LatLng | null; option: PickOption; name: string; address: string } | null>(null);
   const [finding, setFinding] = useState(false);
   const pickOptions: PickOption[] = useMemo(
-    () => (groups.length ? groups.map((g) => ({ id: g.id, label: g.id === group?.id ? `${g.name} (current)` : g.name })) : [{ id: null, label: 'Just me' }]),
+    () => (groups.length ? groups.map((g) => ({ id: g.id, label: g.id === group?.id ? `${g.name} (current)` : g.name })) : []),
     [groups, group?.id],
   );
+  // Meeting points are shared with a group, so you need one first.
+  const needsGroup = () => {
+    if (groups.length) return false;
+    Alert.alert('Join a group first', 'Meeting points are shared with a group. Create or join one on the Group tab.', [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Go to Group', onPress: () => router.navigate('/group') },
+    ]);
+    return true;
+  };
   const lockedOffline = () => {
     if (isOnline) return false;
     Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
@@ -117,7 +126,7 @@ export default function MapScreen() {
     if (activeAlert) router.push('/alert');
   }, [activeAlert?.id]);
 
-  const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  const meetingPlace = group?.meetingPlace ?? null;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
   // Color by position across ALL my groups (current group first) so a person keeps one color.
@@ -127,7 +136,7 @@ export default function MapScreen() {
   // What the sheet points at: the active route's target, else the meeting place, else the nearest safe area.
   const target =
     (route && { name: route.targetName, coord: route.to, label: 'Heading to' }) ??
-    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: group ? 'Meeting point' : 'My meeting point' }) ??
+    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' }) ??
     (() => {
       const p = myLocation && group ? nearestPlace(myLocation, group.safeAreas) : null;
       return p ? { name: p.name, coord: p.coord, label: 'Nearest safe area' } : null;
@@ -160,7 +169,9 @@ export default function MapScreen() {
               : 'Go to meeting point';
   const summary = target
     ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}`
-    : 'Hold a spot on the map to drop a meeting point.';
+    : group
+      ? 'Hold a spot on the map to drop a meeting point.'
+      : 'Join a group on the Group tab to set a meeting point.';
 
   // Pending selection: what it is, how far, and what confirming will do.
   const pendingMeters = pending && myLocation ? distanceM(myLocation, pending.coord) : null;
@@ -184,16 +195,14 @@ export default function MapScreen() {
     ? groups
         .filter((g) => g.meetingPlace && (g.id === group?.id || visibleGroupIds.includes(g.id)))
         .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id, color: groupColor(g.id, groupIds) as string | null }))
-    : meetingPlace
-      ? [{ key: 'meet-personal', place: meetingPlace, description: 'Personal meeting place', current: true, color: null as string | null }]
-      : [];
+    : [];
 
   return (
     <View style={styles.fill}>
       <HoldGroupPicker
         options={pickOptions}
         getCoordinate={async (pt) => (mapRef.current ? mapRef.current.coordinateForPoint(pt) : null)}
-        canStart={() => !lockedOffline()}
+        canStart={() => !needsGroup() && !lockedOffline()}
         onLockMap={setMapLocked}
         onPendingChange={setPendingPin}
         onPick={(coord, option) => startNaming(coord, option)}
@@ -409,7 +418,7 @@ export default function MapScreen() {
                 variant="secondary"
                 accessibilityHint="Type an address or use where you are. You can also hold a spot on the map."
                 onPress={() => {
-                  if (lockedOffline()) return;
+                  if (needsGroup() || lockedOffline()) return;
                   const current = pickOptions.find((o) => o.id === (group?.id ?? null)) ?? pickOptions[0];
                   startNaming(null, current);
                 }}
