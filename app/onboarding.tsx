@@ -2,14 +2,14 @@
 // Shown once (see OnboardingGate); finishing flips the gate and the root stack shows the map.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState, type ComponentProps, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { useOnboarding } from '@/components/OnboardingGate';
 import { requestNotificationPermission } from '@/services/alerts';
 import { requestForegroundPermission } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 
 const STEPS = ['welcome', 'name', 'location', 'notifications', 'group'] as const;
 type Step = (typeof STEPS)[number];
@@ -41,7 +41,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={styles.topBar}>
           {index > 0 ? (
             <Pressable onPress={back} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back" style={styles.back}>
@@ -254,7 +254,7 @@ function Page({ icon, title, body, children }: { icon: ComponentProps<typeof Ion
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
-        <Ionicons name={icon} size={72} color={colors.primary} />
+        <Ionicons name={icon} size={64} color={colors.text} accessibilityElementsHidden importantForAccessibility="no" />
         <Text style={styles.title} accessibilityRole="header">{title}</Text>
         <Text style={styles.body}>{body}</Text>
       </View>
@@ -270,15 +270,15 @@ const styles = StyleSheet.create({
   back: { flexDirection: 'row', alignItems: 'center', minWidth: 80, minHeight: 48 },
   backText: { color: colors.text, fontSize: 17 },
   dots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.card },
-  dotActive: { backgroundColor: colors.primary },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.rule },
+  dotActive: { backgroundColor: colors.text },
   page: { flexGrow: 1, justifyContent: 'space-between', padding: 24, gap: 32 },
-  hero: { alignItems: 'center', gap: 16, marginTop: 32 },
-  title: { color: colors.text, fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  body: { color: colors.muted, fontSize: 17, lineHeight: 24, textAlign: 'center' },
+  hero: { alignItems: 'center', gap: 14, marginTop: 40, paddingHorizontal: 8 },
+  title: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: '700', textAlign: 'center' },
+  body: { color: colors.muted, fontSize: 17, lineHeight: 24, textAlign: 'center', maxWidth: 340 },
   actions: { gap: 12 },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 14, paddingHorizontal: 16, minHeight: 56, fontSize: 18 },
+  input: { backgroundColor: colors.card, color: colors.text, borderRadius: radius, paddingHorizontal: 16, minHeight: 56, fontSize: 17 },
   codeInput: { textAlign: 'center', fontSize: 26, fontWeight: '700', letterSpacing: 6 },
-  warn: { color: colors.warn, fontSize: 15, lineHeight: 21, textAlign: 'center' },
-  error: { color: colors.danger, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  warn: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  error: { color: colors.dangerText, fontSize: 16, fontWeight: '600', textAlign: 'center' },
 });

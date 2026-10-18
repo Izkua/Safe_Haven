@@ -1,7 +1,7 @@
 // [OWNER: MAP] Hold a finger on the map for 1 s → a list of your groups pops up next to it.
 // Slide onto a group and let go to drop that group's meeting place there. Letting go without
-// sliding leaves the list open so you can tap instead. Built on plain touch events (no extra
-// native deps): touches inside the MapView bubble up to this wrapper's onTouch* handlers.
+// sliding leaves the list open so you can tap instead. With only one option, it skips the list.
+// Built on plain touch events (no extra native deps): touches inside the MapView bubble up to this wrapper's onTouch* handlers.
 import { useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { HOLD_MS, hoverIndex, ITEM_H, MENU_W, menuLayout, MOVE_TOLERANCE, type MenuLayout } from '@/lib/pinPicker';
@@ -80,6 +80,13 @@ export function HoldGroupPicker({ options, getCoordinate, canStart, onLockMap, o
       onLockMap(true);
       const coord = await getCoordinate(at).catch(() => null);
       if (!coord || !start.current) { onLockMap(false); return; } // finger lifted meanwhile
+      // Only one place it can go (one group, or just me): skip the list.
+      if (options.length === 1) {
+        start.current = null;
+        onLockMap(false);
+        onPick(coord, options[0]);
+        return;
+      }
       setPicker({ coord, layout: menuLayout(at.x, at.y, rows, origin.current.w, origin.current.h), mode: 'drag' });
       setHover(null);
       onPendingChange(coord);

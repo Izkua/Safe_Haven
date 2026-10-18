@@ -1,195 +1,387 @@
-// [OWNER: UI] Group screen: my status, members, create/join.
+// [OWNER: UI] Group screen: how am I, where is everyone, and a few clear actions.
+// Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
+// You can be in several groups: chips at the top pick the current one, or add another.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState, type ComponentProps } from 'react';
+import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
+import { tap } from '@/lib/haptics';
 import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors, statusColor } from '@/theme';
-import type { Member } from '@/types';
+import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
+import type { LatLng, Member } from '@/types';
+
+const STALE_MS = 60 * 60_000;
+const order = { need_help: 0, unknown: 1, safe: 2 } as const;
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
   const { group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
   // Everyone else in the CURRENT group (state.members spans all my groups).
   const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
+  const [mode, setMode] = useState<'none' | 'join' | 'create' | 'meeting'>('none');
+  // Adding another group while already in one: show the join/create screen instead of the group.
   const [adding, setAdding] = useState(false);
-  const [code, setCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [placeName, setPlaceName] = useState('');
+  const [text, setText] = useState('');
   const [address, setAddress] = useState('');
   const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  // Wait for the keyboard to finish opening, then bring the focused box into view.
+  const scrollToInput = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
 
+  const copyCode = async () => {
+    if (!group) return;
+    await Clipboard.setStringAsync(group.inviteCode).catch(() => {});
+    tap();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const open = (m: typeof mode) => {
+    setMode(m);
+    setText('');
+    setAddress('');
+    setMsg(null);
+  };
   const run = async (fn: () => Promise<boolean>, fail: string) => {
     setBusy(true);
     setMsg(null);
     const ok = await fn();
     setBusy(false);
-    if (!ok) setMsg(fail);
-    else {
+    if (ok) {
+      setMode('none');
       setAdding(false);
-      setCode('');
-      setNewName('');
-    }
+    } else setMsg(fail);
   };
   const setHere = () => {
-    if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
-    if (!myLocation) return Alert.alert('No location yet', 'Wait for a GPS fix, or type an address instead.');
-    actions.setMeetingPlace(myLocation, placeName.trim() || 'Meeting place', group?.id);
-    setPlaceName('');
+    if (!isOnline) return Alert.alert('You’re offline', 'Reconnect to change the meeting point.');
+    if (!myLocation) return Alert.alert('No location yet', 'Wait for GPS, type an address, or hold a spot on the map.');
+    actions.setMeetingPlace(myLocation, text.trim() || 'Meeting point', group?.id);
+    setMode('none');
   };
   const setFromAddress = async () => {
-    if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
+    if (!isOnline) return Alert.alert('You’re offline', 'Reconnect to change the meeting point.');
     const typed = address.trim();
     if (!typed) return Alert.alert('Enter an address', 'For example "4060 George Washington Ln NE, Seattle".');
     setFinding(true);
     const coord = await geocodeAddress(typed);
     setFinding(false);
-    if (!coord) return Alert.alert("Couldn't find that address", 'Check the spelling, add the city, or drop a pin on the Map tab instead.');
-    await actions.setMeetingPlace(coord, placeName.trim() || typed, group?.id, typed);
-    setPlaceName('');
-    setAddress('');
+    if (!coord) return Alert.alert('Couldn’t find that address', 'Check the spelling, add the city, or hold a spot on the map instead.');
+    await actions.setMeetingPlace(coord, text.trim() || typed, group?.id, typed);
+    setMode('none');
+  };
+  const setStatus = (s: 'safe' | 'need_help') => {
+    tap();
+    actions.setStatus(s);
+  };
+  const pickGroup = (id: string) => {
+    tap();
+    actions.selectGroup(id);
+    setAdding(false);
+    open('none');
   };
 
+  // Group switcher: one chip per group, plus "Add group".
+  const chips = groups.length > 0 && (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      {groups.map((g) => {
+        const current = !adding && g.id === group?.id;
+        return (
+          <Pressable
+            key={g.id}
+            onPress={() => pickGroup(g.id)}
+            style={({ pressed }) => [styles.chip, current && styles.chipOn, { opacity: pressed ? 0.7 : 1 }]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: current }}
+            accessibilityLabel={`${g.name}, ${g.memberIds.length} ${g.memberIds.length === 1 ? 'person' : 'people'}`}
+          >
+            {/* The group's color: its meeting point on the map uses it too. */}
+            <View style={[styles.chipDot, { backgroundColor: groupColor(g.id, groups.map((x) => x.id)) }]} />
+            <Text style={[styles.chipText, current && styles.chipTextOn]}>{g.name}</Text>
+            <Text style={[styles.chipCount, current && styles.chipTextOn]}>{g.memberIds.length}</Text>
+          </Pressable>
+        );
+      })}
+      <Pressable
+        onPress={() => {
+          tap();
+          setAdding(true);
+          open('none');
+        }}
+        style={({ pressed }) => [styles.chip, adding && styles.chipOn, { opacity: pressed ? 0.7 : 1 }]}
+        accessibilityRole="button"
+        accessibilityState={{ selected: adding }}
+      >
+        <Ionicons name="add" size={18} color={adding ? colors.onPrimary : colors.text} />
+        <Text style={[styles.chipText, adding && styles.chipTextOn]}>Add group</Text>
+      </Pressable>
+    </ScrollView>
+  );
+
+  // ---- Not in a group yet, or adding another ----
+  if (!group || adding) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.screen}>
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+          {chips}
+          <Text style={styles.title} accessibilityRole="header">{group ? 'Add another group' : 'Your group'}</Text>
+          <Text style={styles.lead}>Join your family or friends so you can see each other and meet up in an emergency.</Text>
+
+          {mode === 'join' ? (
+            <View style={styles.form}>
+              <Text style={styles.fieldLabel}>Invite code</Text>
+              <TextInput
+                style={[styles.input, styles.codeInput]}
+                placeholder="ABC123"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoFocus
+                maxLength={6}
+                value={text}
+                onChangeText={setText}
+                accessibilityLabel="Invite code"
+              />
+              <BigButton label="Join group" icon="log-in-outline" loading={busy} disabled={text.trim().length !== 6} onPress={() => run(() => actions.joinGroup(text), 'Couldn’t join. Check the code and your connection.')} />
+              <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
+            </View>
+          ) : mode === 'create' ? (
+            <View style={styles.form}>
+              <Text style={styles.fieldLabel}>Group name</Text>
+              <TextInput style={styles.input} placeholder="Family" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Group name" onFocus={scrollToInput} />
+              <BigButton label="Create group" icon="add" loading={busy} onPress={() => run(() => actions.createGroup(text.trim() || 'My Family'), 'Couldn’t create the group. Check your connection.')} />
+              <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
+            </View>
+          ) : (
+            <View style={styles.form}>
+              <BigButton label="Join with a code" icon="key-outline" onPress={() => open('join')} />
+              <BigButton label="Start a new group" icon="add" variant="secondary" onPress={() => open('create')} />
+              {group && <BigButton label="Cancel" variant="plain" onPress={() => setAdding(false)} />}
+            </View>
+          )}
+          {msg && <Text style={styles.error} accessibilityRole="alert">{msg}</Text>}
+        </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // ---- In a group ----
+  const sorted = [...members].sort((a, b) => order[a.status] - order[b.status] || (b.locationTs ?? 0) - (a.locationTs ?? 0));
+  const count = members.length + 1;
+  const meet = group.meetingPlace;
+
   return (
-    <View style={styles.screen}>
-      <View style={styles.statusRow}>
-        <StatusButton label="I'm safe" active={myStatus === 'safe'} color={colors.safe} onPress={() => actions.setStatus('safe')} />
-        <StatusButton label="Need help" active={myStatus === 'need_help'} color={colors.danger} onPress={() => actions.setStatus('need_help')} />
-      </View>
+    <SafeAreaView edges={['top']} style={styles.screen}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+        {chips}
+        <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
+        <Text style={styles.lead}>
+          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meet.address ? ` (${meet.address})` : ''}.` : 'No meeting point yet.'}
+        </Text>
 
-      {groups.length > 0 && (
-        <View>
-          <Text style={styles.label}>Your groups · tap to make current</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 6 }}>
-            {groups.map((g) => {
-              const current = !adding && g.id === group?.id;
-              return (
-                <Pressable
-                  key={g.id}
-                  onPress={() => { actions.selectGroup(g.id); setAdding(false); }}
-                  style={[styles.chip, current && styles.chipActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: current }}
-                >
-                  {current && <Ionicons name="checkmark-circle" size={16} color="#fff" />}
-                  <Text style={[styles.chipText, current && { color: '#fff' }]}>{g.name}</Text>
-                  <Text style={[styles.chipCount, current && { color: '#fff' }]}>{g.memberIds.length}</Text>
-                </Pressable>
-              );
-            })}
-            <Pressable onPress={() => { setAdding(true); setMsg(null); }} style={[styles.chip, adding && styles.chipActive]}>
-              <Ionicons name="add" size={16} color={adding ? '#fff' : colors.text} />
-              <Text style={[styles.chipText, adding && { color: '#fff' }]}>Add group</Text>
-            </Pressable>
-          </ScrollView>
+        <Text style={styles.heading}>How are you?</Text>
+        <View style={styles.statusRow}>
+          <StatusButton
+            label="I’m safe"
+            icon="checkmark-circle"
+            active={myStatus === 'safe'}
+            tint={colors.safe}
+            fill={colors.safeFill}
+            onFill={colors.onSafe}
+            onPress={() => setStatus('safe')}
+          />
+          <StatusButton
+            label="I need help"
+            icon="alert-circle"
+            active={myStatus === 'need_help'}
+            tint={colors.dangerText}
+            fill={colors.danger}
+            onFill={colors.onDanger}
+            alarm
+            onPress={() => setStatus('need_help')}
+          />
         </View>
-      )}
 
-      {group && !adding ? (
-        <>
-          <Text style={styles.h1}>{group.name}</Text>
-          <Text style={styles.muted}>Invite code: <Text style={styles.code}>{group.inviteCode}</Text></Text>
-          <Text style={styles.muted}>
-            Meeting place: {group.meetingPlace ? group.meetingPlace.name : 'not set yet'}
-            {group.meetingPlace?.address ? ` · ${group.meetingPlace.address}` : ''}
+        <Text style={styles.heading}>People</Text>
+        {sorted.length ? (
+          <View>
+            {sorted.map((m, i) => <MemberRow key={m.uid} m={m} me={myLocation} last={i === sorted.length - 1} />)}
+          </View>
+        ) : (
+          <Text style={styles.body}>No one else has joined yet. Invite them below.</Text>
+        )}
+
+        <Text style={styles.heading}>Invite code</Text>
+        <View style={styles.codeRow}>
+          <Text
+            style={styles.codeBig}
+            selectable
+            accessibilityLabel={`Invite code ${group.inviteCode.split('').join(' ')}`}
+          >
+            {group.inviteCode}
           </Text>
-          <View style={styles.box}>
-            <Text style={styles.name}>Set meeting place for {group.name}</Text>
-            <TextInput style={styles.input} editable={isOnline} placeholder="Name it (e.g. Front lawn)" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} />
+          <BigButton
+            label={copied ? 'Copied' : 'Copy'}
+            icon={copied ? 'checkmark' : 'copy-outline'}
+            variant={copied ? 'secondary' : 'primary'}
+            style={styles.copyBtn}
+            accessibilityHint="Copies the invite code"
+            onPress={copyCode}
+          />
+        </View>
+        <Text style={styles.hint}>They enter it under Join with a code on their Group tab.</Text>
+
+        {mode === 'meeting' ? (
+          <View style={[styles.form, { marginTop: 28 }]}>
+            <Text style={styles.fieldLabel}>Meeting point name</Text>
+            <TextInput style={styles.input} placeholder="Front lawn" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Meeting point name" onFocus={scrollToInput} />
+            <Text style={styles.fieldLabel}>Address (optional)</Text>
             <TextInput
               style={styles.input}
-              editable={isOnline && !finding}
-              placeholder="Address (e.g. 4060 George Washington Ln NE, Seattle)"
+              placeholder="4060 George Washington Ln NE, Seattle"
               placeholderTextColor={colors.muted}
+              editable={!finding}
               value={address}
               onChangeText={setAddress}
               autoCorrect={false}
               returnKeyType="search"
               onSubmitEditing={() => void setFromAddress()}
+              onFocus={scrollToInput}
+              accessibilityLabel="Meeting point address"
             />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Pressable style={[styles.btn, { flex: 1 }, (!isOnline || finding) && { opacity: 0.5 }]} disabled={!isOnline || finding} onPress={() => void setFromAddress()}>
-                <Text style={styles.btnText}>{finding ? 'Finding…' : 'Use address'}</Text>
-              </Pressable>
-              <Pressable style={[styles.btn, { flex: 1 }, !isOnline && { opacity: 0.5 }]} disabled={!isOnline} onPress={setHere}>
-                <Text style={styles.btnText}>Use my location</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.muted}>{isOnline ? 'Or on the Map tab: hold a spot for 1 second, slide to a group, and let go.' : 'Meeting place changes are locked while offline.'}</Text>
+            {address.trim() ? (
+              <BigButton label="Use this address" icon="search" loading={finding} onPress={() => void setFromAddress()} />
+            ) : (
+              <BigButton label="Use where I am now" icon="locate" onPress={setHere} />
+            )}
+            <Text style={styles.hint}>Or on the Map tab: hold a spot for 1 second, slide to a group, and let go.</Text>
+            <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
           </View>
-          <FlatList
-            style={{ marginTop: 12 }}
-            data={members}
-            keyExtractor={(m) => m.uid}
-            renderItem={({ item }) => <MemberRow m={item} me={myLocation} />}
-            ListEmptyComponent={<Text style={styles.muted}>No other members yet. Share the invite code.</Text>}
-          />
-          <Pressable onPress={() => Alert.alert(`Leave ${group.name}?`, 'Your other groups stay. You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}>
-            <Text style={[styles.muted, { textAlign: 'center', marginTop: 12, textDecorationLine: 'underline' }]}>Leave this group</Text>
-          </Pressable>
-        </>
-      ) : (
-        <View style={{ gap: 10, marginTop: 16 }}>
-          <Text style={styles.h1}>{groups.length ? 'Add another group' : 'Join or create a group'}</Text>
-          <TextInput style={styles.input} placeholder="Invite code" placeholderTextColor={colors.muted} autoCapitalize="characters" value={code} onChangeText={setCode} />
-          <Pressable style={styles.btn} disabled={busy} onPress={() => run(() => actions.joinGroup(code), 'Could not join. Check the code and your connection.')}><Text style={styles.btnText}>{busy ? 'Working…' : 'Join'}</Text></Pressable>
-          <TextInput style={styles.input} placeholder="New group name" placeholderTextColor={colors.muted} value={newName} onChangeText={setNewName} />
-          <Pressable style={styles.btn} disabled={busy} onPress={() => run(() => actions.createGroup(newName || 'My Family'), 'Could not create the group. Check your connection.')}><Text style={styles.btnText}>Create</Text></Pressable>
-          {msg && <Text style={{ color: colors.danger }}>{msg}</Text>}
-          {adding && group && (
-            <Pressable onPress={() => setAdding(false)}>
-              <Text style={[styles.muted, { textAlign: 'center', textDecorationLine: 'underline' }]}>Cancel</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
-    </View>
+        ) : (
+          <View style={[styles.form, { marginTop: 28 }]}>
+            <BigButton
+              label="Share invite"
+              icon="share-outline"
+              variant="secondary"
+              accessibilityHint={`Shares invite code ${group.inviteCode}`}
+              onPress={() => Share.share({ message: `Join my SafeHaven group "${group.name}" with code ${group.inviteCode}` })}
+            />
+            <BigButton
+              label="Change meeting point"
+              icon="location-outline"
+              variant="secondary"
+              disabled={!isOnline}
+              onPress={() => open('meeting')}
+            />
+            {!isOnline && <Text style={styles.hint}>The meeting point can’t change while you’re offline.</Text>}
+            <BigButton
+              label="Leave group"
+              variant="plain"
+              tone="danger"
+              onPress={() => Alert.alert(`Leave ${group.name}?`, 'Your other groups stay. You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}
+            />
+          </View>
+        )}
+      </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-function MemberRow({ m, me }: { m: Member; me: { latitude: number; longitude: number } | null }) {
-  const dist = me && m.location ? formatDistance(distanceM(me, m.location)) : '—';
-  const seen = m.locationTs ? formatAge(Date.now() - m.locationTs) : 'never';
+function MemberRow({ m, me, last }: { m: Member; me: LatLng | null; last: boolean }) {
+  const age = m.locationTs ? Date.now() - m.locationTs : null;
+  const help = m.status === 'need_help';
+  const stale = age === null || age > STALE_MS;
+  const line = help
+    ? `Needs help, ${age !== null ? formatAge(age) : 'location unknown'}`
+    : m.status === 'safe'
+      ? `Safe, ${age !== null ? formatAge(age) : 'location unknown'}`
+      : age !== null
+        ? `No check-in, seen ${formatAge(age)}`
+        : 'No check-in yet';
+  const dist = me && m.location ? formatDistance(distanceM(me, m.location)) : null;
+  const icon: ComponentProps<typeof Ionicons>['name'] = help ? 'alert-circle' : m.status === 'safe' ? 'checkmark-circle' : 'ellipse-outline';
   return (
-    <View style={styles.row}>
-      <View style={[styles.dot, { backgroundColor: statusColor[m.status] }]} />
+    <View style={[styles.row, !last && styles.rowRule]} accessible accessibilityLabel={`${m.name}. ${line}${dist ? `. ${dist} away` : ''}`}>
+      <Ionicons name={icon} size={26} color={statusColor[m.status]} />
       <View style={{ flex: 1 }}>
         <Text style={styles.name}>{m.name}</Text>
-        <Text style={styles.muted}>{m.status.replace('_', ' ')} · seen {seen}</Text>
+        <Text style={[styles.status, help && styles.statusHelp]}>{line}</Text>
       </View>
-      <Text style={styles.muted}>{dist}</Text>
+      {dist && <Text style={[styles.dist, stale && !help && { color: colors.muted }]}>{dist}</Text>}
     </View>
   );
 }
 
-function StatusButton({ label, active, color, onPress }: { label: string; active: boolean; color: string; onPress: () => void }) {
+function StatusButton(p: {
+  label: string;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  active: boolean;
+  tint: ColorValue;
+  fill: ColorValue;
+  onFill: ColorValue;
+  /** Alarm actions show their color as an outline even before they're pressed. */
+  alarm?: boolean;
+  onPress: () => void;
+}) {
+  const fg = p.active ? p.onFill : p.tint;
   return (
-    <Pressable onPress={onPress} style={[styles.statusBtn, { borderColor: color, backgroundColor: active ? color : 'transparent' }]}>
-      <Text style={[styles.btnText, { color: active ? '#fff' : color }]}>{label}</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: p.active }}
+      onPress={p.onPress}
+      style={({ pressed }) => [
+        styles.statusBtn,
+        { backgroundColor: p.active ? p.fill : colors.card, opacity: pressed ? 0.7 : 1 },
+        p.alarm && { borderWidth: 2, borderColor: p.active ? p.fill : p.tint },
+      ]}
+    >
+      <Ionicons name={p.icon} size={28} color={fg} />
+      <Text style={[styles.statusText, { color: fg }]}>{p.label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 16, backgroundColor: colors.bg },
-  statusRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  statusBtn: { flex: 1, borderWidth: 2, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  h1: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  muted: { color: colors.muted, marginTop: 2 },
-  code: { color: colors.text, fontWeight: '700', letterSpacing: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.card },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  name: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  box: { backgroundColor: colors.card, borderRadius: 12, padding: 12, gap: 8, marginTop: 12 },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 10, padding: 12 },
-  btn: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center' },
-  btnText: { color: '#fff', fontWeight: '700' },
-  label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.card, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { color: colors.text, fontWeight: '700' },
-  chipCount: { color: colors.muted, fontWeight: '600', fontSize: 12 },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
+  lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
+  heading: { marginTop: 28, marginBottom: 10, fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
+  body: { fontSize: 17, lineHeight: 24, color: colors.muted },
+  chips: { gap: 8, paddingBottom: 16 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.card },
+  chipOn: { backgroundColor: colors.primary },
+  chipDot: { width: 12, height: 12, borderRadius: 3, borderWidth: 1.5, borderColor: '#FFFFFF', transform: [{ rotate: '45deg' }] },
+  chipText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  chipCount: { fontSize: 13, fontWeight: '600', color: colors.muted, fontVariant: ['tabular-nums'] },
+  chipTextOn: { color: colors.onPrimary },
+  statusRow: { flexDirection: 'row', gap: 10 },
+  statusBtn: { flex: 1, minHeight: 88, borderRadius: radius, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  statusText: { fontSize: 17, fontWeight: '600' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingVertical: 10 },
+  rowRule: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.rule },
+  name: { fontSize: 17, fontWeight: '600', color: colors.text },
+  status: { fontSize: 15, lineHeight: 20, color: colors.muted },
+  statusHelp: { color: colors.dangerText, fontWeight: '600' },
+  dist: { fontSize: 17, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
+  form: { marginTop: 24, gap: 10 },
+  fieldLabel: { fontSize: 15, color: colors.muted },
+  input: { minHeight: minTarget, borderRadius: radius, paddingHorizontal: 16, fontSize: 17, color: colors.text, backgroundColor: colors.card },
+  codeInput: { fontSize: 24, fontWeight: '600', letterSpacing: 6, textAlign: 'center' },
+  hint: { marginTop: 8, fontSize: 15, lineHeight: 20, color: colors.muted },
+  codeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius, paddingLeft: 18, paddingRight: 8, paddingVertical: 8 },
+  codeBig: { flex: 1, fontSize: 32, lineHeight: 40, fontWeight: '700', letterSpacing: 6, color: colors.text, fontVariant: ['tabular-nums'] },
+  copyBtn: { minWidth: 112 },
+  error: { marginTop: 16, fontSize: 15, fontWeight: '600', color: colors.dangerText },
 });

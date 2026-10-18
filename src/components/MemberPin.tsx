@@ -24,8 +24,8 @@ export function MemberPin({ name, color, status }: Props) {
         </View>
       )}
       {status === 'safe' && (
-        <View style={[styles.badge, { backgroundColor: colors.safe }]}>
-          <Ionicons name="checkmark" size={12} color="#fff" />
+        <View style={[styles.badge, { backgroundColor: colors.safeFill }]}>
+          <Ionicons name="checkmark" size={12} color={colors.onSafe} />
         </View>
       )}
     </View>
@@ -42,16 +42,12 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
   },
   helpRing: { borderColor: colors.danger, borderWidth: 4 },
-  initial: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  initial: { color: colors.onDanger, fontSize: 18, fontWeight: '700' },
   badge: {
     position: 'absolute',
     top: 0,
@@ -60,9 +56,9 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  badgeText: { color: colors.onDanger, fontSize: 12, fontWeight: '800' },
 });

@@ -1,0 +1,589 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T02:56:04.800Z",
+  "title": "Design System: SafeHaven",
+  "extensions": {
+    "colorMeta": {
+      "slate": {
+        "role": "neutral",
+        "displayName": "Slate (dark page)",
+        "canonical": "#1E2023",
+        "tonalRamp": [
+          "#232629",
+          "#3B3F45",
+          "#525860",
+          "#6A717C",
+          "#838A95",
+          "#A7ACB4",
+          "#CED0D5",
+          "#F1F2F3"
+        ]
+      },
+      "slate-raised": {
+        "role": "neutral",
+        "displayName": "Slate Raised (dark tonal)",
+        "canonical": "#2D3035",
+        "tonalRamp": [
+          "#232529",
+          "#3B3E45",
+          "#525761",
+          "#69707C",
+          "#838A96",
+          "#A7ACB4",
+          "#CDD0D5",
+          "#F1F2F3"
+        ]
+      },
+      "mist": {
+        "role": "primary",
+        "displayName": "Mist (dark text / filled button)",
+        "canonical": "#ECEDEE",
+        "tonalRamp": [
+          "#242628",
+          "#3C4043",
+          "#54595E",
+          "#6C7379",
+          "#868C93",
+          "#A9ADB2",
+          "#CFD1D4",
+          "#F2F2F3"
+        ]
+      },
+      "mist-soft": {
+        "role": "neutral",
+        "displayName": "Mist Soft (dark secondary text)",
+        "canonical": "#A6ABB2",
+        "tonalRamp": [
+          "#232629",
+          "#3B3F44",
+          "#535860",
+          "#6A717B",
+          "#848B95",
+          "#A8ACB3",
+          "#CED1D4",
+          "#F1F2F3"
+        ]
+      },
+      "slate-rule": {
+        "role": "neutral",
+        "displayName": "Slate Rule",
+        "canonical": "#3A3E44",
+        "tonalRamp": [
+          "#232629",
+          "#3B3F45",
+          "#525860",
+          "#6A717C",
+          "#838A95",
+          "#A7ACB4",
+          "#CDD0D5",
+          "#F1F2F3"
+        ]
+      },
+      "danger-text-dark": {
+        "role": "secondary",
+        "displayName": "Danger Text (dark)",
+        "canonical": "#FF6B5E",
+        "tonalRamp": [
+          "#4D0600",
+          "#800A00",
+          "#B30E00",
+          "#E61300",
+          "#FF2C1A",
+          "#FF695C",
+          "#FFABA3",
+          "#FFE8E5"
+        ]
+      },
+      "safe-dark": {
+        "role": "tertiary",
+        "displayName": "Safe Green (dark)",
+        "canonical": "#5CC08B",
+        "tonalRamp": [
+          "#153725",
+          "#245C3E",
+          "#328157",
+          "#40A670",
+          "#59BF89",
+          "#89D2AB",
+          "#BDE5D0",
+          "#EDF8F2"
+        ]
+      },
+      "sand": {
+        "role": "neutral",
+        "displayName": "Sand (light page)",
+        "canonical": "#E8DFCF",
+        "tonalRamp": [
+          "#342A19",
+          "#564629",
+          "#79623A",
+          "#9B7E4A",
+          "#B59864",
+          "#CAB591",
+          "#E1D6C1",
+          "#F7F4EE"
+        ]
+      },
+      "sand-deep": {
+        "role": "neutral",
+        "displayName": "Sand Deep (light tonal)",
+        "canonical": "#DCCFB8",
+        "tonalRamp": [
+          "#332A19",
+          "#55462A",
+          "#78623B",
+          "#9A7E4C",
+          "#B39765",
+          "#C9B592",
+          "#E1D5C2",
+          "#F7F3EE"
+        ]
+      },
+      "bark": {
+        "role": "primary",
+        "displayName": "Bark (light text / filled button)",
+        "canonical": "#2A2118",
+        "tonalRamp": [
+          "#31261C",
+          "#51402E",
+          "#725941",
+          "#927353",
+          "#AC8C6D",
+          "#C4AD97",
+          "#DED1C5",
+          "#F6F2EF"
+        ]
+      },
+      "bark-soft": {
+        "role": "neutral",
+        "displayName": "Bark Soft (light secondary text)",
+        "canonical": "#5E5141",
+        "tonalRamp": [
+          "#2D271F",
+          "#4B4134",
+          "#6A5B49",
+          "#88755E",
+          "#A18E77",
+          "#BCAF9F",
+          "#D9D2C9",
+          "#F5F2F0"
+        ]
+      },
+      "sand-rule": {
+        "role": "neutral",
+        "displayName": "Sand Rule",
+        "canonical": "#CDBFA6",
+        "tonalRamp": [
+          "#31291C",
+          "#52452E",
+          "#726040",
+          "#937C53",
+          "#AC956C",
+          "#C4B497",
+          "#DED5C4",
+          "#F6F3EF"
+        ]
+      },
+      "sand-ink": {
+        "role": "neutral",
+        "displayName": "Sand Ink (text on dark fills)",
+        "canonical": "#F4EEE3",
+        "tonalRamp": [
+          "#372B16",
+          "#5C4824",
+          "#806532",
+          "#A58141",
+          "#BE9B5A",
+          "#D1B88A",
+          "#E5D7BD",
+          "#F8F4ED"
+        ]
+      },
+      "danger-text-light": {
+        "role": "secondary",
+        "displayName": "Danger Text (light)",
+        "canonical": "#962A1B",
+        "tonalRamp": [
+          "#41120C",
+          "#6C1E13",
+          "#972A1B",
+          "#C23623",
+          "#DC503D",
+          "#E68375",
+          "#F1B9B1",
+          "#FBECE9"
+        ]
+      },
+      "safe-light": {
+        "role": "tertiary",
+        "displayName": "Safe Green (light)",
+        "canonical": "#255E42",
+        "tonalRamp": [
+          "#163727",
+          "#245B40",
+          "#32805A",
+          "#41A574",
+          "#5ABE8D",
+          "#8AD1AE",
+          "#BDE5D1",
+          "#EDF8F2"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Danger Red (fill)",
+        "canonical": "#B3261E",
+        "tonalRamp": [
+          "#420E0B",
+          "#6D1712",
+          "#99201A",
+          "#C52A21",
+          "#DE433A",
+          "#E87973",
+          "#F2B4B0",
+          "#FBEAE9"
+        ]
+      },
+      "on-danger": {
+        "role": "neutral",
+        "displayName": "On Danger",
+        "canonical": "#FFF4EF",
+        "tonalRamp": [
+          "#4D1800",
+          "#802800",
+          "#B33800",
+          "#E64800",
+          "#FF611A",
+          "#FF8F5C",
+          "#FFC0A3",
+          "#FFEDE5"
+        ]
+      },
+      "watch": {
+        "role": "tertiary",
+        "displayName": "Watch Amber (fill)",
+        "canonical": "#E3A21A",
+        "tonalRamp": [
+          "#453108",
+          "#72520D",
+          "#A07212",
+          "#CE9318",
+          "#E7AC31",
+          "#EEC46D",
+          "#F6DEAD",
+          "#FCF6E8"
+        ]
+      },
+      "safe-fill": {
+        "role": "tertiary",
+        "displayName": "Safe Fill",
+        "canonical": "#2C6B4B",
+        "tonalRamp": [
+          "#163626",
+          "#255A3F",
+          "#347E59",
+          "#43A372",
+          "#5CBC8B",
+          "#8BCFAD",
+          "#BEE4D1",
+          "#EDF8F2"
+        ]
+      },
+      "route-light": {
+        "role": "secondary",
+        "displayName": "Route Blue (light map)",
+        "canonical": "#1550C8",
+        "tonalRamp": [
+          "#071C45",
+          "#0C2E73",
+          "#1141A2",
+          "#1653D0",
+          "#2F6DE9",
+          "#6B97EF",
+          "#ACC4F6",
+          "#E8EFFD"
+        ]
+      },
+      "route-casing-light": {
+        "role": "neutral",
+        "displayName": "Route Casing (light map)",
+        "canonical": "#0B2E73",
+        "tonalRamp": [
+          "#071C46",
+          "#0B2F74",
+          "#1041A3",
+          "#1454D1",
+          "#2E6DEB",
+          "#6A97F1",
+          "#ABC5F7",
+          "#E8EFFD"
+        ]
+      },
+      "route-dark": {
+        "role": "secondary",
+        "displayName": "Route Blue (dark map)",
+        "canonical": "#5AA9FF",
+        "tonalRamp": [
+          "#00254D",
+          "#003D80",
+          "#0055B3",
+          "#006EE6",
+          "#1A87FF",
+          "#5CAAFF",
+          "#A3CFFF",
+          "#E5F2FF"
+        ]
+      },
+      "route-casing-dark": {
+        "role": "neutral",
+        "displayName": "Route Casing (dark map)",
+        "canonical": "#0A2152",
+        "tonalRamp": [
+          "#081B44",
+          "#0E2E72",
+          "#13409F",
+          "#1952CD",
+          "#326CE6",
+          "#6E96ED",
+          "#ADC4F5",
+          "#E8EFFC"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "One per screen; Warning/Watch alert headline."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "Section headings and the map destination."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Instructions; the 17pt floor for safety copy."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Every button label."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Secondary supporting lines."
+      },
+      "emergency": {
+        "displayName": "Emergency",
+        "purpose": "Full-red emergency headline only."
+      },
+      "fine": {
+        "displayName": "Fine",
+        "purpose": "Attribution and disclaimers only."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "haptic-watch",
+        "value": "impact light x1",
+        "purpose": "Watch-level alert."
+      },
+      {
+        "name": "haptic-warning",
+        "value": "impact heavy x2, 300ms apart",
+        "purpose": "Warning-level alert."
+      },
+      {
+        "name": "haptic-emergency",
+        "value": "impact heavy x3 every 1500ms until acknowledged",
+        "purpose": "Emergency-level alert."
+      },
+      {
+        "name": "haptic-select",
+        "value": "selection",
+        "purpose": "Status pair and appearance choice."
+      },
+      {
+        "name": "press",
+        "value": "opacity 0.7 pressed, 0.45 disabled; no transforms",
+        "purpose": "All buttons."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "390px design width; single column, 20px gutter"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled main action per screen (dark default).",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 11l18-8-8 18-2-8-8-2z\"/></svg>Go to meeting point</button>",
+      "css": ".ds-btn-primary{font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;font-size:17px;font-weight:600;min-height:56px;padding:10px 18px;border:0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:opacity .12s;min-width:320px;background:#ECEDEE;color:#1E2023}.ds-btn-primary:hover{opacity:.9}.ds-btn-primary:active{opacity:.7}.ds-btn-primary:focus-visible{outline:3px solid #ECEDEE;outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Tonal button for every other action.",
+      "html": "<button class=\"ds-btn-secondary\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M15.5 8.5l-2 5-5 2 2-5z\"/></svg>Compass</button>",
+      "css": ".ds-btn-secondary{font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;font-size:17px;font-weight:600;min-height:56px;padding:10px 18px;border:0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:opacity .12s;min-width:320px;background:#2D3035;color:#ECEDEE}.ds-btn-secondary:hover{opacity:.9}.ds-btn-secondary:active{opacity:.7}.ds-btn-secondary:focus-visible{outline:3px solid #ECEDEE;outline-offset:3px}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Red fill; danger only.",
+      "html": "<button class=\"ds-btn-danger\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7.5v5.5M12 16.5h.01\"/></svg>I need help</button>",
+      "css": ".ds-btn-danger{font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;font-size:17px;font-weight:600;min-height:56px;padding:10px 18px;border:0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:opacity .12s;min-width:320px;background:#B3261E;color:#FFF4EF}.ds-btn-danger:hover{opacity:.9}.ds-btn-danger:active{opacity:.7}.ds-btn-danger:focus-visible{outline:3px solid #FF6B5E;outline-offset:3px}"
+    },
+    {
+      "name": "Plain Danger Button",
+      "kind": "button",
+      "refersTo": "button-plain-danger",
+      "description": "Text-only red action (Leave group, Practice a disaster).",
+      "html": "<button class=\"ds-btn-plain\">Leave group</button>",
+      "css": ".ds-btn-plain{font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;font-size:17px;font-weight:600;min-height:48px;padding:0 18px;border:0;background:transparent;color:#FF6B5E;cursor:pointer;min-width:320px}.ds-btn-plain:hover{text-decoration:underline}.ds-btn-plain:focus-visible{outline:2px solid #FF6B5E;outline-offset:2px;border-radius:12px}"
+    },
+    {
+      "name": "Status Pair",
+      "kind": "custom",
+      "refersTo": "status-help-active",
+      "description": "I'm safe / I need help: tonal when idle, filled when chosen.",
+      "html": "<div class=\"ds-status\"><button class=\"ds-st ds-st-safe is-on\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12.5l2.5 2.5L16 9.5\"/></svg><span>I&#8217;m safe</span></button><button class=\"ds-st ds-st-help\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7.5v5.5M12 16.5h.01\"/></svg><span>I need help</span></button></div>",
+      "css": ".ds-status{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:350px;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif}.ds-st{min-height:88px;border:0;border-radius:12px;background:#2D3035;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:inherit;font-size:17px;font-weight:600;cursor:pointer}.ds-st svg{width:28px;height:28px}.ds-st-safe{color:#5CC08B}.ds-st-safe.is-on{background:#2C6B4B;color:#F4EEE3}.ds-st-help{color:#FF6B5E}.ds-st-help:hover,.ds-st-help:focus-visible{background:#B3261E;color:#FFF4EF;outline:none}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Tonal field, no border, 12px corners.",
+      "html": "<label class=\"ds-field\"><span>Meeting point name</span><input class=\"ds-input\" placeholder=\"Front lawn\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:6px;width:350px;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif}.ds-field span{font-size:15px;color:#A6ABB2}.ds-input{min-height:56px;padding:0 16px;border:0;border-radius:12px;background:#2D3035;color:#ECEDEE;font-family:inherit;font-size:17px}.ds-input::placeholder{color:#A6ABB2}.ds-input:focus-visible{outline:2px solid #ECEDEE;outline-offset:2px}"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "button-secondary",
+      "description": "Standard iOS tabs: icon + label.",
+      "html": "<nav class=\"ds-tabs\" aria-label=\"Main\"><a href=\"#\" class=\"on\" aria-current=\"page\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M9 4l-6 3v13l6-3 6 3 6-3V4l-6 3z\"/><path d=\"M9 4v13M15 7v13\"/></svg>Map</a><a href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3 2.7 3 6\"/></svg>Group</a><a href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5h6v2M12 11v5M9.5 13.5h5\"/></svg>First aid</a></nav>",
+      "css": ".ds-tabs{display:grid;grid-template-columns:repeat(3,1fr);width:390px;padding:8px 0 6px;background:#1E2023;border-top:1px solid #3A3E44;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif}.ds-tabs a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:600;color:#A6ABB2;text-decoration:none}.ds-tabs a.on{color:#ECEDEE}.ds-tabs a:hover{color:#ECEDEE}.ds-tabs a:focus-visible{outline:2px solid #ECEDEE;border-radius:8px}"
+    },
+    {
+      "name": "Map Sheet",
+      "kind": "card",
+      "refersTo": "map-sheet",
+      "description": "Where you are going, then real buttons. No dashboard numbers.",
+      "html": "<section class=\"ds-sheet\"><div class=\"ds-dest\">Drumheller Fountain</div><div class=\"ds-sum\">Meeting point · 340 m · 5 min walk</div><button class=\"ds-sb ds-sb-p\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 11l18-8-8 18-2-8-8-2z\"/></svg>Go to meeting point</button><div class=\"ds-row\"><button class=\"ds-sb\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M15.5 8.5l-2 5-5 2 2-5z\"/></svg>Compass</button><button class=\"ds-sb\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14\"/></svg>Save map</button></div><button class=\"ds-plain\">Practice a disaster</button></section>",
+      "css": ".ds-sheet{width:358px;padding:18px 16px 12px;background:#1E2023;border-radius:20px 20px 0 0;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;display:flex;flex-direction:column;gap:10px}.ds-dest{font-size:20px;line-height:25px;font-weight:600;color:#ECEDEE;padding:0 4px}.ds-sum{font-size:15px;color:#A6ABB2;padding:0 4px 4px}.ds-row{display:flex;gap:10px}.ds-sb{flex:1;min-height:56px;border:0;border-radius:12px;background:#2D3035;color:#ECEDEE;font-family:inherit;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}.ds-sb-p{background:#ECEDEE;color:#1E2023}.ds-sb:hover{opacity:.9}.ds-sb:focus-visible{outline:2px solid #ECEDEE;outline-offset:2px}.ds-plain{min-height:44px;border:0;background:none;color:#FF6B5E;font-family:inherit;font-size:17px;font-weight:600;cursor:pointer}"
+    },
+    {
+      "name": "Offline Banner",
+      "kind": "custom",
+      "refersTo": "button-secondary",
+      "description": "Neutral tonal banner. Offline is not danger.",
+      "html": "<div class=\"ds-offline\" role=\"status\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3l18 18M8 8a5 5 0 0 0-1 9.9h10M12 6a5 5 0 0 1 5 5 3.5 3.5 0 0 1 2.5 5.5\"/></svg><span>No signal · last updated 14 min ago</span></div>",
+      "css": ".ds-offline{width:340px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:#2D3035;color:#ECEDEE;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;font-size:15px;font-weight:600}"
+    },
+    {
+      "name": "Emergency Alert",
+      "kind": "custom",
+      "refersTo": "button-danger",
+      "description": "Top of the urgency ladder: full red, headline first, real buttons.",
+      "html": "<section class=\"ds-em\"><h1>Drop.<br>Cover.<br>Hold on.</h1><div class=\"ds-em-meta\">Earthquake · Emergency · just now</div><button class=\"ds-em-go\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 11l18-8-8 18-2-8-8-2z\"/></svg>Go to Husky Stadium · 450 m</button><button class=\"ds-em-t\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12.5l2.5 2.5L16 9.5\"/></svg>I&#8217;m safe</button></section>",
+      "css": ".ds-em{width:350px;padding:28px 20px 20px;background:#B3261E;color:#FFF4EF;font-family:-apple-system, 'SF Pro Text', system-ui, sans-serif;display:flex;flex-direction:column;gap:10px}.ds-em h1{margin:0;font-size:44px;line-height:50px;font-weight:700}.ds-em-meta{font-size:15px;font-weight:600;margin-bottom:10px}.ds-em-go,.ds-em-t{min-height:56px;border:0;border-radius:12px;font-family:inherit;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer}.ds-em-go{min-height:64px;background:#FFF4EF;color:#B3261E}.ds-em-t{background:rgba(255,244,239,.18);color:#FFF4EF}.ds-em-go:focus-visible,.ds-em-t:focus-visible{outline:3px solid #FFF4EF;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Card",
+    "overview": "SafeHaven should feel like the calm instruction card in a go-bag: plain words, big readable buttons, and nothing to decode. Anyone (a child, a grandparent, someone shaking and in the dark) should be able to read the screen and tap the right thing on the first try. The interface is quiet on purpose, so that when something does turn red it is unmistakable.\n\n**Dark is the default.** Surfaces are a soft neutral grey with near-white text. Light mode, chosen in First aid › Appearance or by \"Match phone\", is a warm beige with dark-brown text. Pure white is not used anywhere. Every action is a real button: a rounded 56pt shape with an icon and a short verb label. The interface uses no boxed \"cards\", no dashboard metrics and no decorative rules. Grouping comes from spacing and simple section headings.\n\nUrgency still escalates in visible steps (the **urgency ladder**): Watch is an amber header, Warning a red header, and Emergency the whole screen in red. Haptics follow the level: one light tap, then two heavy pulses, then repeating pulses until the user acts.",
+    "keyCharacteristics": [
+      "Dark grey by default, warm beige in light mode, never pure white.",
+      "Real buttons: rounded (12px), at least 56pt tall, icon plus a verb label, centered.",
+      "Three button kinds: filled (one main action), tonal (everything else), plain text (cancel and leave).",
+      "Color is earned: red for danger, amber for watch, green for safe. Everything else is neutral.",
+      "iPhone-standard type in two weights; nothing oversized except the emergency headline.",
+      "Secondary tasks (forms, editing) stay hidden until the user asks for them."
+    ],
+    "rules": [
+      {
+        "name": "The Earned Color Rule",
+        "body": "Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills use red as an **outline** (the alarm button), never a red fill, and every drill alert is labeled \"Drill:\".",
+        "section": "colors"
+      },
+      {
+        "name": "The Danger Follows You Rule",
+        "body": "Live danger (an active alert, or a member asking for help) stays visible after the alert screen closes: a red Danger Banner at the top of the Map, and a red \"!\" badge on the Group tab.",
+        "section": "colors"
+      },
+      {
+        "name": "The No White Rule",
+        "body": "No surface or text uses pure #FFFFFF. The brightest values are Mist (#ECEDEE), Sand Ink (#F4EEE3) and On Danger (#FFF4EF).",
+        "section": "colors"
+      },
+      {
+        "name": "The Fill-or-Text Rule",
+        "body": "Red and green each come in two tokens. Use `colors.danger` / `colors.safeFill` for fills and `colors.dangerText` / `colors.safe` for text and icons. Never mix them.",
+        "section": "colors"
+      },
+      {
+        "name": "The Route Blue Rule",
+        "body": "The route line is the one non-signal color: Route Blue (light #1550C8, dark #5AA9FF, at least 4.6:1 on map tiles), drawn 5pt wide over a 9pt dark-navy casing (#0B2E73 / #0A2152) with round caps. A straight-line fallback is dashed. Blue appears only on the route line, never in the UI.",
+        "section": "colors"
+      },
+      {
+        "name": "The Identity Exception",
+        "body": "Group members each get a distinct identity color on the map (`memberPalette`), because people must be told apart at a glance. It's the only non-signal color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Plain Words Rule",
+        "body": "Labels are verbs or short phrases a child could read aloud: \"Go to meeting point\", \"I need help\", \"Invite people\". No jargon and no labels above headings. Write sentences, not `·`-separated fragments: \"340 m away (about 5 min walk)\", \"Safe, 3 min ago\". The `·` is only for attribution credits.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Filled Button Rule",
+        "body": "Each screen has one filled button, the main action. Everything else is tonal or plain.",
+        "section": "layout"
+      },
+      {
+        "name": "The Aligned Text Rule",
+        "body": "Helper text, hints, errors and credits follow the alignment of the content they belong to (left in every screen except the centered onboarding hero). No centered grey captions under left-aligned layouts, and no labels above titles: the title comes first, and any status line goes under it.",
+        "section": "layout"
+      },
+      {
+        "name": "The Ask-First Rule",
+        "body": "Forms and editing controls stay hidden until the user taps the button that needs them.",
+        "section": "layout"
+      },
+      {
+        "name": "The No-Shadow Rule",
+        "body": "Separate things with surface tone or space, never a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use `BigButton` for every action, with an icon and a verb label, at least 56pt tall.",
+      "Do keep exactly one filled button per screen; use tonal for the rest and plain for Cancel or Leave.",
+      "Do use `colors.*` tokens so screens adapt to dark (default) and light.",
+      "Do separate sections with space and a 20pt heading, not boxes or rules.",
+      "Do hide forms and editing until the user taps the button that needs them.",
+      "Do pair every status color with an icon and a word (\"Needs help\", \"Safe\").",
+      "Do escalate along the urgency ladder (watch → warning → emergency) based on real severity."
+    ],
+    "donts": [
+      "Don't use pure white (#FFFFFF), shadows, gradients or blur.",
+      "Don't wrap content in bordered cards or build dashboard-style metric tiles (big number plus small label).",
+      "Don't use red, amber or green for anything that isn't danger, watch or safe. Drills may use the red alarm outline, never a red fill.",
+      "Don't change the meeting point or the route on a map tap or long-press alone; always select, then confirm.",
+      "Don't chain fragments with `·` in UI copy.",
+      "Don't put a label above a heading, or use type larger than 28pt outside the emergency headline.",
+      "Don't set instructions below 17pt.",
+      "Don't make an emergency alert dismissible with a single tap or a swipe.",
+      "Don't add icon sets beyond Ionicons, imported from `@expo/vector-icons/Ionicons` only."
+    ]
+  }
+}

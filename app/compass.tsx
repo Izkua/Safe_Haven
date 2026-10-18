@@ -1,21 +1,33 @@
 // [OWNER: MAP/OFFLINE] Zero-network guidance: arrow + distance to target using GPS + compass only.
+// Design: "No signal · heading to" + name, a north-marked dial with one ink arrow, huge distance.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { OfflineBanner } from '@/components/OfflineBanner';
-import { bearingDeg, distanceM, formatDistance, nearestPlace } from '@/lib/geo';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { BigNumber } from '@/components/BigNumber';
+import { bearingDeg, distanceM, nearestPlace } from '@/lib/geo';
 import { startHeadingWatch } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors } from '@/theme';
 
+const DIAL = 280;
+const WALK_MPS = 1.3;
+const ARRIVED_M = 30;
+
 export default function CompassScreen() {
-  const { group, personalMeetingPlace, route, myLocation } = useApp().state;
+  const { group, personalMeetingPlace, route, myLocation, isOnline } = useApp().state;
   const [heading, setHeading] = useState(0);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
-    startHeadingWatch(setHeading).then((s) => (stop = s)).catch(() => {});
-    return () => stop?.();
+    let cancelled = false;
+    startHeadingWatch(setHeading)
+      .then((s) => (cancelled ? s() : (stop = s)))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
   }, []);
 
   const target =
@@ -25,32 +37,59 @@ export default function CompassScreen() {
 
   if (!target || !myLocation) {
     return (
-      <View style={styles.screen}>
-        <Text style={styles.sub}>{!myLocation ? 'Waiting for GPS…' : 'Set a meeting place on the map first.'}</Text>
-      </View>
+      <SafeAreaView edges={['bottom']} style={[styles.screen, { justifyContent: 'center' }]}>
+        <Text style={styles.name}>{!myLocation ? 'Waiting for GPS…' : 'No meeting place yet'}</Text>
+        <Text style={styles.label}>{!myLocation ? 'Step outside or near a window. GPS works without signal.' : 'Long-press the map to set one.'}</Text>
+      </SafeAreaView>
     );
   }
 
-  const rotation = (bearingDeg(myLocation, target.coord) - heading + 360) % 360;
+  const bearing = bearingDeg(myLocation, target.coord);
+  const arrow = (bearing - heading + 360) % 360; // arrow relative to where the phone points
+  const north = (360 - heading) % 360; // N marker stays on true north
   const dist = distanceM(myLocation, target.coord);
+  const arrived = dist < ARRIVED_M;
+  const mins = Math.max(1, Math.round(dist / WALK_MPS / 60));
 
   return (
-    <View style={styles.screen}>
-      <OfflineBanner />
-      <Text style={styles.sub}>Heading to</Text>
-      <Text style={styles.target}>{target.name}</Text>
-      <View style={{ transform: [{ rotate: `${rotation}deg` }], marginVertical: 40 }}>
-        <Ionicons name="arrow-up-circle" size={220} color={dist < 30 ? colors.safe : colors.primary} />
+    <SafeAreaView edges={['bottom']} style={styles.screen}>
+      <Text style={styles.name} numberOfLines={2} accessibilityRole="header">{target.name}</Text>
+      <Text style={styles.label}>{isOnline ? 'Follow the arrow.' : 'No signal. Follow the arrow; GPS still works.'}</Text>
+
+      <View style={styles.dialWrap}>
+        <View style={styles.dial} accessible accessibilityRole="image" accessibilityLabel={`Arrow pointing to ${target.name}, ${Math.round(arrow)} degrees ${arrow <= 180 ? 'right' : 'left'}`}>
+          <View style={[StyleSheet.absoluteFill, { transform: [{ rotate: `${north}deg` }] }]}>
+            <Text style={styles.north}>N</Text>
+          </View>
+          <View style={{ transform: [{ rotate: `${arrow}deg` }] }}>
+            {/* Ionicons "navigate" points up-right (45°); rotate it back so 0° = straight ahead. */}
+            <Ionicons name="navigate" size={150} color={arrived ? colors.safe : colors.text} style={{ transform: [{ rotate: '-45deg' }] }} />
+          </View>
+        </View>
       </View>
-      <Text style={styles.distance}>{dist < 30 ? 'You have arrived' : formatDistance(dist)}</Text>
-      <Text style={styles.sub}>Straight-line distance · works without signal</Text>
-    </View>
+
+      <View style={styles.bottom}>
+        {arrived ? (
+          <Text style={[styles.arrived]}>You have arrived</Text>
+        ) : (
+          <BigNumber meters={dist} size={56} />
+        )}
+        {!arrived && <Text style={styles.mins}>About {mins} min</Text>}
+      </View>
+      <Text style={styles.fine}>Straight-line distance. Works without signal.</Text>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: colors.bg, gap: 6 },
-  target: { color: colors.text, fontSize: 24, fontWeight: '800', textAlign: 'center' },
-  distance: { color: colors.text, fontSize: 40, fontWeight: '800' },
-  sub: { color: colors.muted, fontSize: 15, textAlign: 'center' },
+  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
+  label: { marginTop: 4, fontSize: 15, lineHeight: 20, color: colors.muted },
+  name: { fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
+  dialWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  dial: { width: DIAL, height: DIAL, borderRadius: DIAL / 2, borderWidth: 1, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' },
+  north: { position: 'absolute', top: 10, alignSelf: 'center', fontSize: 16, fontWeight: '700', color: colors.text },
+  bottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  mins: { fontSize: 18, fontWeight: '600', color: colors.muted, marginBottom: 8 },
+  arrived: { fontSize: 28, fontWeight: '700', color: colors.safe },
+  fine: { marginTop: 12, fontSize: 13, color: colors.muted },
 });

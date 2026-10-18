@@ -3,27 +3,23 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { HAZARD_TYPES, HAZARDS } from '@/lib/hazards';
-import { UW_CENTER } from '@/mocks/demo';
-import { makeSimulatedAlert } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 import type { HazardType } from '@/types';
 
 export default function SimulateScreen() {
   const { state, actions } = useApp();
-  const center = state.myLocation ?? state.group?.meetingPlace?.coord ?? UW_CENTER;
-
   const simulate = (hazard: HazardType) => {
     router.back(); // the map screen opens /alert as soon as the new alert is set
-    void actions.triggerAlert(makeSimulatedAlert(center, hazard));
+    void actions.startDrill(hazard); // also sent to everyone in your group
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ gap: 10, padding: 20 }}>
-      <Text style={styles.hint}>Simulates a warning centered on your location so you can practice what to do.</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 20 }}>
+      <Text style={styles.hint}>{state.group ? `Pick a disaster to practice. Everyone in ${state.group.name} gets the drill alert too, marked as practice.` : 'Pick a disaster to practice. You’ll see the same steps as a real alert, marked as a drill.'}</Text>
       {HAZARD_TYPES.map((h) => (
-        <Pressable key={h} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={() => simulate(h)}>
-          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.danger} />
+        <Pressable key={h} accessibilityRole="button" accessibilityLabel={`Practice ${HAZARDS[h].label}`} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={() => simulate(h)}>
+          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.dangerText} />
           <Text style={styles.label}>{HAZARDS[h].label}</Text>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>
@@ -34,7 +30,7 @@ export default function SimulateScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  hint: { color: colors.muted, fontSize: 14, lineHeight: 20, marginBottom: 4 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 14, padding: 16 },
-  label: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '700' },
+  hint: { color: colors.muted, fontSize: 17, lineHeight: 24, marginBottom: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, backgroundColor: colors.card, borderRadius: radius, paddingHorizontal: 16, marginBottom: 10 },
+  label: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '600' },
 });
