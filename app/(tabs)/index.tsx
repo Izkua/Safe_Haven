@@ -178,6 +178,7 @@ export default function MapScreen() {
   };
 
   // Each group has its own meeting place (in that group's color): the current group's plus every checked group's.
+  // Other groups' points are drawn faint (40%) so the current group's point stands out.
   const groupIds = groups.map((g) => g.id);
   const meetingMarkers = groups.length
     ? groups
@@ -243,7 +244,7 @@ export default function MapScreen() {
 
         {meetingMarkers.map((m) => (
           // Re-keyed on color: custom marker views aren't reliably redrawn in place.
-          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.7}>
+          <Marker key={`${m.key}-${m.color}`} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.4}>
             <View style={[styles.meetingMarker, m.color ? { backgroundColor: m.color, borderColor: '#FFFFFF' } : null]} />
           </Marker>
         ))}
