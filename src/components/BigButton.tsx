@@ -2,6 +2,7 @@
 //   primary   – filled, the main action on a screen
 //   secondary – tonal fill, everything else
 //   danger    – red fill, danger only
+//   alarm     – red outline + red label on the tonal surface (drills, help calls)
 //   plain     – text only (cancel, leave, small links); pass `tone="danger"` for red text
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
@@ -11,7 +12,7 @@ import { colors, minTarget, radius } from '@/theme';
 type Props = {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'plain';
+  variant?: 'primary' | 'secondary' | 'danger' | 'alarm' | 'plain';
   tone?: 'default' | 'danger';
   icon?: ComponentProps<typeof Ionicons>['name'];
   disabled?: boolean;
@@ -24,6 +25,7 @@ const BG: Record<NonNullable<Props['variant']>, ColorValue> = {
   primary: colors.primary,
   secondary: colors.card,
   danger: colors.danger,
+  alarm: colors.card,
   plain: 'transparent',
 };
 
@@ -31,7 +33,7 @@ export function BigButton({ label, onPress, variant = 'primary', tone = 'default
   const fg =
     variant === 'primary' ? colors.onPrimary
     : variant === 'danger' ? colors.onDanger
-    : tone === 'danger' ? colors.dangerText
+    : variant === 'alarm' || tone === 'danger' ? colors.dangerText
     : colors.text;
   const inactive = disabled || loading;
   return (
@@ -45,6 +47,7 @@ export function BigButton({ label, onPress, variant = 'primary', tone = 'default
       style={({ pressed }) => [
         styles.btn,
         variant === 'plain' && styles.plain,
+        variant === 'alarm' && styles.alarm,
         { backgroundColor: BG[variant], opacity: inactive ? 0.45 : pressed ? 0.7 : 1 },
         style,
       ]}
@@ -73,5 +76,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   plain: { minHeight: 48 },
+  alarm: { borderWidth: 2, borderColor: colors.dangerText },
   label: { fontSize: 17, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
 });

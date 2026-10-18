@@ -1,8 +1,8 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
 // Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Platform, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Linking, PanResponder, Platform, Pressable, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
 import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
@@ -33,6 +33,49 @@ export default function MapScreen() {
   // A place picked on the map but not confirmed yet: a long-press (new meeting point) or a tapped safe area.
   const [pending, setPending] = useState<{ kind: 'meeting'; coord: LatLng } | { kind: 'place'; place: Place } | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  // ---- Swipeable panel: two positions ----
+  //   open:      at least half the screen, every action
+  //   collapsed: just the handle + where you're going (the map leads)
+  // Animated with the JS driver on purpose: with the native driver, a re-render right after a
+  // swipe briefly redrew the panel at a stale position (the "whole menu flashes" glitch).
+  const { height: screenH } = useWindowDimensions();
+  const [open, setOpen] = useState(false);
+  const [closedH, setClosedH] = useState(96); // handle + destination
+  const [fullH, setFullH] = useState(Math.round(screenH * 0.5)); // whole panel
+  const closedOffset = Math.max(0, fullH - closedH);
+  const sheetY = useRef(new Animated.Value(closedOffset)).current;
+  const dragStart = useRef(0);
+  const animateTo = (toValue: number) =>
+    Animated.spring(sheetY, { toValue, useNativeDriver: false, bounciness: 0, speed: 20 }).start();
+  const snap = (next: boolean) => {
+    setOpen(next);
+    animateTo(next ? 0 : closedOffset);
+  };
+  // Keep the panel pinned to its position when its measured size changes.
+  useEffect(() => {
+    animateTo(open ? 0 : closedOffset);
+  }, [closedOffset]);
+  // Picking a place on the map needs its Confirm / Cancel buttons in view.
+  useEffect(() => {
+    if (pending && !open) snap(true);
+  }, [pending]);
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+        onPanResponderGrant: () => sheetY.stopAnimation((v) => (dragStart.current = v)),
+        onPanResponderMove: (_, g) => sheetY.setValue(Math.min(closedOffset, Math.max(0, dragStart.current + g.dy))),
+        onPanResponderRelease: (_, g) => {
+          const at = Math.min(closedOffset, Math.max(0, dragStart.current + g.dy));
+          // A flick decides; otherwise whichever position is nearer. A pending pick can't be hidden.
+          const next = g.vy < -0.3 ? true : g.vy > 0.3 ? false : at < closedOffset / 2;
+          snap(pending ? true : next);
+        },
+        onPanResponderTerminate: () => snap(open),
+      }),
+    [closedOffset, open, pending],
+  );
 
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
@@ -138,7 +181,7 @@ export default function MapScreen() {
         showsCompass
         mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
-        mapPadding={{ top: 0, left: 0, right: 0, bottom: 290 }}
+        mapPadding={{ top: 0, left: 0, right: 0, bottom: open ? fullH : closedH }}
         onLongPress={(e) => {
           if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
           // Only select it; nothing changes until the user confirms in the sheet.
@@ -152,8 +195,30 @@ export default function MapScreen() {
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
+        {/* Route: bright blue over a darker casing so it stands out on any tile, light or dark. */}
         {route && (
-          <Polyline coordinates={route.points} strokeColor={overlay.route} strokeWidth={4} lineDashPattern={route.isStraightLine ? [10, 8] : undefined} />
+          <Polyline
+            key={`casing-${overlay.routeCasing}`}
+            coordinates={route.points}
+            strokeColor={overlay.routeCasing}
+            strokeWidth={9}
+            lineCap="round"
+            lineJoin="round"
+            lineDashPattern={route.isStraightLine ? [14, 10] : undefined}
+            zIndex={1}
+          />
+        )}
+        {route && (
+          <Polyline
+            key={`route-${overlay.route}`}
+            coordinates={route.points}
+            strokeColor={overlay.route}
+            strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
+            lineDashPattern={route.isStraightLine ? [14, 10] : undefined}
+            zIndex={2}
+          />
         )}
 
         {meetingPlace && (
@@ -221,82 +286,104 @@ export default function MapScreen() {
         {DEMO_MODE && <Text style={styles.demo}>Demo mode</Text>}
       </SafeAreaView>
 
-      <View style={styles.sheet}>
-        {pending ? (
-          <>
-            <View style={styles.sheetHead}>
-              <Text style={styles.targetName} numberOfLines={2} accessibilityRole="header">{pendingTitle}</Text>
-              <Text style={styles.summary}>{pendingSummary}</Text>
+      <Animated.View
+        style={[styles.sheet, { minHeight: Math.round(screenH * 0.5), transform: [{ translateY: sheetY }] }]}
+        onLayout={(e) => setFullH(e.nativeEvent.layout.height)}
+      >
+        {/* Always visible. Drag it, or tap it, to open or close the panel. */}
+        <View {...pan.panHandlers} onLayout={(e) => setClosedH(e.nativeEvent.layout.y + e.nativeEvent.layout.height + 10)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${pending ? pendingTitle : target ? target.name : 'No meeting point yet'}. ${open ? 'Hide options' : 'Show options'}`}
+            accessibilityState={{ expanded: open }}
+            onPress={() => snap(pending ? true : !open)}
+          >
+            <View style={styles.grab}>
+              <View style={styles.handle} />
             </View>
-            <BigButton
-              label={pending.kind === 'meeting' ? 'Set as meeting point' : `Go to ${pending.place.name}`}
-              icon={pending.kind === 'meeting' ? 'flag' : 'navigate'}
-              loading={confirming}
-              onPress={() => void confirmPending()}
-            />
-            <BigButton label="Cancel" variant="plain" disabled={confirming} onPress={() => setPending(null)} />
-          </>
-        ) : (
-        <>
-        <View style={styles.sheetHead}>
-          <Text style={styles.targetName} numberOfLines={2} accessibilityRole="header">
-            {target ? target.name : "No meeting point yet"}
-          </Text>
-          <Text style={styles.summary}>{summary}</Text>
+            <View style={styles.sheetHead}>
+              <Text style={styles.targetName} numberOfLines={1}>
+                {pending ? pendingTitle : target ? target.name : 'No meeting point yet'}
+              </Text>
+              <Text style={styles.summary} numberOfLines={2}>{pending ? pendingSummary : summary}</Text>
+            </View>
+          </Pressable>
         </View>
 
-        <BigButton
-          label={goLabel}
-          icon={routeShown && !canRetry ? 'checkmark' : 'navigate'}
-          loading={routingLoading}
-          disabled={goDisabled}
-          accessibilityHint={routeShown && !canRetry ? 'Long-press the map to pick a new meeting point' : undefined}
-          onPress={() => void actions.routeToBestTarget()}
-        />
-        <View style={styles.row}>
-          <BigButton label="Compass" icon="compass-outline" variant="secondary" style={styles.half} onPress={() => router.push('/compass')} />
-          <BigButton
-            label={busyLabel ?? (tiles ? 'Map saved' : 'Save map')}
-            icon={tiles ? 'checkmark-circle-outline' : 'cloud-download-outline'}
-            variant="secondary"
-            style={styles.half}
-            accessibilityHint="Downloads the map around you for use without signal"
-            onPress={onDownloadTiles}
-          />
-        </View>
-        {/* Drills are practice, not danger: neutral, never red (red is reserved for live alerts). */}
-        <BigButton label="Practice a drill" icon="school-outline" variant="plain" onPress={() => router.push('/simulate')} />
-        </>
-        )}
+        {/* Shown when open. */}
+        <View
+          style={styles.more}
+          accessibilityElementsHidden={!open}
+          importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
+          pointerEvents={open ? 'auto' : 'none'}
+        >
+          {pending ? (
+            <>
+              <BigButton
+                label={pending.kind === 'meeting' ? 'Set as meeting point' : `Go to ${pending.place.name}`}
+                icon={pending.kind === 'meeting' ? 'flag' : 'navigate'}
+                loading={confirming}
+                onPress={() => void confirmPending()}
+              />
+              <BigButton label="Cancel" variant="plain" disabled={confirming} onPress={() => setPending(null)} />
+            </>
+          ) : (
+            <>
+              <BigButton
+                label={goLabel}
+                icon={routeShown && !canRetry ? 'checkmark' : 'navigate'}
+                loading={routingLoading}
+                disabled={goDisabled}
+                accessibilityHint={routeShown && !canRetry ? 'Long-press the map to pick a new meeting point' : undefined}
+                onPress={() => void actions.routeToBestTarget()}
+              />
+              <View style={styles.row}>
+                <BigButton label="Compass" icon="compass-outline" variant="secondary" style={styles.half} onPress={() => router.push('/compass')} />
+                <BigButton
+                  label={busyLabel ?? (tiles ? 'Map saved' : 'Save map')}
+                  icon={tiles ? 'checkmark-circle-outline' : 'cloud-download-outline'}
+                  variant="secondary"
+                  style={styles.half}
+                  accessibilityHint="Downloads the map around you for use without signal"
+                  onPress={onDownloadTiles}
+                />
+              </View>
+              <BigButton label="Practice a drill" icon="warning-outline" variant="alarm" accessibilityHint="Practice a disaster. Your group gets the drill too." onPress={() => router.push('/simulate')} />
+            </>
+          )}
 
-        {(route || USE_TILE_BASEMAP || (!isOnline && tiles)) && (
-          <Text style={styles.fine}>
-            {route ? (route.isStraightLine ? 'Straight-line direction. ' : 'Walking route. ') : ''}
-            {route && !route.isStraightLine && (routeIsCached || !isOnline) ? `Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}. ` : ''}
-            {route ? 'Routes don’t avoid hazards. ' : ''}
-            <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
-            {route ? <>{' · '}<Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text></> : null}
-            {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution ? <>{' · '}<Text style={styles.link} onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}>{attribution}</Text></> : null}
-          </Text>
-        )}
-      </View>
+          {(route || USE_TILE_BASEMAP || (!isOnline && tiles)) && (
+            <Text style={styles.fine}>
+              {route ? (route.isStraightLine ? 'Straight-line direction. ' : 'Walking route. ') : ''}
+              {route && !route.isStraightLine && (routeIsCached || !isOnline) ? `Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}. ` : ''}
+              {route ? 'Routes don’t avoid hazards. ' : ''}
+              <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
+              {route ? <>{' · '}<Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text></> : null}
+              {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution ? <>{' · '}<Text style={styles.link} onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}>{attribution}</Text></> : null}
+            </Text>
+          )}
+        </View>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.bg },
+  fill: { flex: 1, backgroundColor: colors.bg, overflow: 'hidden' },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12, gap: 8 },
   notice: { backgroundColor: colors.card, color: colors.text, fontSize: 15, lineHeight: 20, paddingVertical: 10, paddingHorizontal: 14, borderRadius: radius, overflow: 'hidden' },
   demo: { alignSelf: 'flex-start', backgroundColor: colors.card, color: colors.muted, fontSize: 13, fontWeight: '600', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
 
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: 10 },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingBottom: 12 },
+  grab: { alignItems: 'center', justifyContent: 'center', height: 26 },
+  handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.muted, opacity: 0.6 },
+  more: { paddingTop: 12, gap: 10 },
   sheetHead: { gap: 2, paddingHorizontal: 4, marginBottom: 4 },
   targetName: { fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   summary: { fontSize: 15, lineHeight: 20, color: colors.muted },
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
-  fine: { fontSize: 12, lineHeight: 16, color: colors.muted, textAlign: 'center' },
+  fine: { fontSize: 12, lineHeight: 16, color: colors.muted, paddingHorizontal: 4 },
   link: { textDecorationLine: 'underline' },
 
   meetingMarker: { width: 22, height: 22, borderRadius: 4, backgroundColor: colors.bg, borderWidth: 3, borderColor: colors.text, transform: [{ rotate: '45deg' }] },

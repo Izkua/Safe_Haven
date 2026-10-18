@@ -53,8 +53,8 @@ export default function CompassScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.screen}>
-      <Text style={styles.label}>{isOnline ? 'Heading to' : 'No signal. Heading to'}</Text>
-      <Text style={styles.name} numberOfLines={2}>{target.name}</Text>
+      <Text style={styles.name} numberOfLines={2} accessibilityRole="header">{target.name}</Text>
+      <Text style={styles.label}>{isOnline ? 'Follow the arrow.' : 'No signal. Follow the arrow; GPS still works.'}</Text>
 
       <View style={styles.dialWrap}>
         <View style={styles.dial} accessible accessibilityRole="image" accessibilityLabel={`Arrow pointing to ${target.name}, ${Math.round(arrow)} degrees ${arrow <= 180 ? 'right' : 'left'}`}>
@@ -83,8 +83,8 @@ export default function CompassScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
-  label: { fontSize: 15, color: colors.muted },
-  name: { marginTop: 4, fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
+  label: { marginTop: 4, fontSize: 15, lineHeight: 20, color: colors.muted },
+  name: { fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
   dialWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   dial: { width: DIAL, height: DIAL, borderRadius: DIAL / 2, borderWidth: 1, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   north: { position: 'absolute', top: 10, alignSelf: 'center', fontSize: 16, fontWeight: '700', color: colors.text },

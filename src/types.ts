@@ -31,6 +31,19 @@ export interface Group {
   memberIds: string[];
   meetingPlace: Place | null;
   safeAreas: Place[];
+  /** Latest practice drill someone started; every member's app shows it once. */
+  drill?: GroupDrill | null;
+}
+
+/** A practice drill shared with the whole group (stored on the group doc). */
+export interface GroupDrill {
+  id: string;
+  hazard: HazardType;
+  center: LatLng;
+  startedBy: string;
+  startedByName: string;
+  /** ms epoch */
+  at: number;
 }
 
 export interface Route {

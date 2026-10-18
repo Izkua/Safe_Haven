@@ -25,7 +25,7 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import type { Group, LatLng, Member, MemberStatus, Place } from '@/types';
+import type { Group, GroupDrill, LatLng, Member, MemberStatus, Place } from '@/types';
 
 const config = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -132,7 +132,15 @@ function toGroup(id: string, d: DocumentData): Group {
     memberIds: d.memberIds ?? [],
     meetingPlace: d.meetingPlace ?? null,
     safeAreas: d.safeAreas ?? [],
+    drill: d.drill ?? null,
   };
+}
+
+/** Share a practice drill with everyone in the group (members see it via subscribeGroup). Never throws. */
+export async function startGroupDrill(groupId: string, drill: GroupDrill): Promise<void> {
+  const firestore = getDb();
+  if (!firestore) return;
+  fire('startGroupDrill', updateDoc(doc(firestore, 'groups', groupId), { drill }));
 }
 
 function toMember(uid: string, d: DocumentData): Member {

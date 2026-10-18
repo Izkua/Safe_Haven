@@ -1,8 +1,9 @@
 // [OWNER: UI] Group screen: how am I, where is everyone, and a few clear actions.
 // Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, type ComponentProps } from 'react';
-import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
+import { useRef, useState, type ComponentProps } from 'react';
+import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
@@ -21,6 +22,18 @@ export default function GroupScreen() {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  // Wait for the keyboard to finish opening, then bring the focused box into view.
+  const scrollToInput = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
+
+  const copyCode = async () => {
+    if (!group) return;
+    await Clipboard.setStringAsync(group.inviteCode).catch(() => {});
+    tap();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const open = (m: typeof mode) => {
     setMode(m);
@@ -50,7 +63,8 @@ export default function GroupScreen() {
   if (!group) {
     return (
       <SafeAreaView edges={['top']} style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
           <Text style={styles.title} accessibilityRole="header">Your group</Text>
           <Text style={styles.lead}>Join your family or friends so you can see each other and meet up in an emergency.</Text>
 
@@ -75,7 +89,7 @@ export default function GroupScreen() {
           ) : mode === 'create' ? (
             <View style={styles.form}>
               <Text style={styles.fieldLabel}>Group name</Text>
-              <TextInput style={styles.input} placeholder="Family" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Group name" />
+              <TextInput style={styles.input} placeholder="Family" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Group name" onFocus={scrollToInput} />
               <BigButton label="Create group" icon="add" loading={busy} onPress={() => run(() => actions.createGroup(text.trim() || 'My Family'), 'Couldn’t create the group. Check your connection.')} />
               <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
             </View>
@@ -87,6 +101,7 @@ export default function GroupScreen() {
           )}
           {msg && <Text style={styles.error} accessibilityRole="alert">{msg}</Text>}
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -97,7 +112,8 @@ export default function GroupScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
         <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
         <Text style={styles.lead}>
           {count} {count === 1 ? 'person' : 'people'}. {group.meetingPlace ? `Meet at ${group.meetingPlace.name}.` : 'No meeting point yet.'}
@@ -135,10 +151,30 @@ export default function GroupScreen() {
           <Text style={styles.body}>No one else has joined yet. Invite them below.</Text>
         )}
 
+        <Text style={styles.heading}>Invite code</Text>
+        <View style={styles.codeRow}>
+          <Text
+            style={styles.codeBig}
+            selectable
+            accessibilityLabel={`Invite code ${group.inviteCode.split('').join(' ')}`}
+          >
+            {group.inviteCode}
+          </Text>
+          <BigButton
+            label={copied ? 'Copied' : 'Copy'}
+            icon={copied ? 'checkmark' : 'copy-outline'}
+            variant={copied ? 'secondary' : 'primary'}
+            style={styles.copyBtn}
+            accessibilityHint="Copies the invite code"
+            onPress={copyCode}
+          />
+        </View>
+        <Text style={styles.hint}>They enter it under Join with a code on their Group tab.</Text>
+
         {mode === 'meeting' ? (
           <View style={[styles.form, { marginTop: 28 }]}>
             <Text style={styles.fieldLabel}>Meeting point name</Text>
-            <TextInput style={styles.input} placeholder="Front lawn" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Meeting point name" />
+            <TextInput style={styles.input} placeholder="Front lawn" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Meeting point name" onFocus={scrollToInput} />
             <BigButton label="Use where I am now" icon="locate" onPress={setHere} />
             <Text style={styles.hint}>Or long-press anywhere on the map.</Text>
             <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
@@ -146,8 +182,8 @@ export default function GroupScreen() {
         ) : (
           <View style={[styles.form, { marginTop: 28 }]}>
             <BigButton
-              label="Invite people"
-              icon="person-add-outline"
+              label="Share invite"
+              icon="share-outline"
               variant="secondary"
               accessibilityHint={`Shares invite code ${group.inviteCode}`}
               onPress={() => Share.share({ message: `Join my SafeHaven group "${group.name}" with code ${group.inviteCode}` })}
@@ -160,7 +196,6 @@ export default function GroupScreen() {
               onPress={() => open('meeting')}
             />
             {!isOnline && <Text style={styles.hint}>The meeting point can’t change while you’re offline.</Text>}
-            <Text style={styles.code} selectable>Invite code {group.inviteCode}</Text>
             <BigButton
               label="Leave group"
               variant="plain"
@@ -170,6 +205,7 @@ export default function GroupScreen() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -230,6 +266,7 @@ function StatusButton(p: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
   pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
@@ -248,7 +285,9 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 15, color: colors.muted },
   input: { minHeight: minTarget, borderRadius: radius, paddingHorizontal: 16, fontSize: 17, color: colors.text, backgroundColor: colors.card },
   codeInput: { fontSize: 24, fontWeight: '600', letterSpacing: 6, textAlign: 'center' },
-  hint: { fontSize: 15, lineHeight: 20, color: colors.muted, textAlign: 'center' },
-  code: { marginTop: 4, fontSize: 15, color: colors.muted, textAlign: 'center' },
-  error: { marginTop: 16, fontSize: 15, fontWeight: '600', color: colors.dangerText, textAlign: 'center' },
+  hint: { marginTop: 8, fontSize: 15, lineHeight: 20, color: colors.muted },
+  codeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: radius, paddingLeft: 18, paddingRight: 8, paddingVertical: 8 },
+  codeBig: { flex: 1, fontSize: 32, lineHeight: 40, fontWeight: '700', letterSpacing: 6, color: colors.text, fontVariant: ['tabular-nums'] },
+  copyBtn: { minWidth: 112 },
+  error: { marginTop: 16, fontSize: 15, fontWeight: '600', color: colors.dangerText },
 });

@@ -28,6 +28,11 @@ export const palette = {
   onDanger: '#FFF4EF',
   watch: '#E3A21A',
   safeFill: '#2C6B4B',
+  // route line (map overlay only)
+  routeLight: '#1550C8',
+  routeCasingLight: '#0B2E73',
+  routeDark: '#5AA9FF',
+  routeCasingDark: '#0A2152',
 };
 
 // Dark is the default. index.tsx loads the saved preference (Dark / Light / Match phone) and applies
@@ -76,7 +81,10 @@ export const colors = {
 export function mapOverlayColors(scheme: string | null | undefined) {
   const dark = scheme !== 'light';
   return {
-    route: dark ? palette.mist : palette.bark,
+    // Route Blue: the one non-signal color, reserved for the route line so it reads as "the way"
+    // and never as danger/watch/safe. Drawn over a darker navy casing so it pops on any map tile.
+    route: dark ? palette.routeDark : palette.routeLight,
+    routeCasing: dark ? palette.routeCasingDark : palette.routeCasingLight,
     danger: dark ? palette.dangerTextDark : palette.danger,
   };
 }

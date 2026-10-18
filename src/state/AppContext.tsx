@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
-import { DEMO_GROUP, DEMO_MEMBERS, UW_CENTER } from '@/mocks/demo';
+import { DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
 import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
 import * as fb from '@/services/firebase';
@@ -12,9 +12,25 @@ import * as loc from '@/services/location';
 import { loadSnapshot, saveSnapshot } from '@/services/offline';
 import { loadSavedTileRegion } from '@/services/tiles';
 import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute } from '@/services/routing';
-import type { Group, HazardAlert, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
+import type { Group, GroupDrill, HazardAlert, HazardType, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
 
 export const DEMO_MODE = !fb.isFirebaseConfigured;
+
+/** A shared drill older than this is ignored (e.g. reopening the app hours later). */
+const DRILL_FRESH_MS = 15 * 60_000;
+
+/** The alert a group drill shows: same steps as the real thing, clearly marked as practice. */
+function drillAlert(d: GroupDrill, mine = false): HazardAlert {
+  const base = makeSimulatedAlert(d.center, d.hazard);
+  return {
+    ...base,
+    id: d.id,
+    issuedAt: d.at,
+    description: mine
+      ? `${base.description} Your group has been sent this drill too.`
+      : `${d.startedByName} started a practice drill for your group. ${base.description}`,
+  };
+}
 
 export interface AppState {
   hydrated: boolean;
@@ -78,6 +94,8 @@ export interface AppActions {
   joinGroup(code: string): Promise<boolean>;
   leaveGroup(): void;
   triggerAlert(alert: HazardAlert): Promise<void>;
+  /** Practice drill: shows it here and sends it to everyone in the group. */
+  startDrill(hazard: HazardType): Promise<void>;
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
 }
@@ -91,6 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
   const beginRouteRequest = useRef(createRouteRequestGuard()).current;
   const lastPublished = useRef<{ coord: LatLng; ts: number } | null>(null);
+  const seenDrills = useRef(new Set<string>());
 
   // 1. Hydrate from disk first so offline launch shows the last-known world.
   useEffect(() => {
@@ -178,7 +197,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!groupId || !authedUid || DEMO_MODE) return;
     return fb.subscribeGroup(
       groupId,
-      (group) => set({ group, lastSyncedAt: Date.now() }),
+      (group) => {
+        set({ group, lastSyncedAt: Date.now() });
+        // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
+        const d = group.drill;
+        if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
+          seenDrills.current.add(d.id);
+          const alert = drillAlert(d);
+          set({ activeAlert: alert });
+          alerts.notifyAlert(alert).catch(() => {});
+        }
+      },
       () => set({ group: null, members: [], route: null }), // stale/denied group -> back to join/create
     );
   }, [groupId, authedUid, set]);
@@ -316,6 +345,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       async triggerAlert(alert) {
         set({ activeAlert: alert });
         await alerts.notifyAlert(alert).catch(() => {});
+      },
+      async startDrill(hazard) {
+        const { myUid, myName, myLocation, group } = s();
+        const drill: GroupDrill = {
+          id: `drill-${myUid ?? 'me'}-${Date.now()}`,
+          hazard,
+          center: myLocation ?? group?.meetingPlace?.coord ?? UW_CENTER,
+          startedBy: myUid ?? 'me',
+          startedByName: myName,
+          at: Date.now(),
+        };
+        seenDrills.current.add(drill.id); // don't re-fire our own drill when the group doc echoes back
+        set({ activeAlert: drillAlert(drill, true) });
+        if (group && !DEMO_MODE) await fb.startGroupDrill(group.id, drill);
       },
       dismissAlert() {
         set({ activeAlert: null });

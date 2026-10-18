@@ -21,6 +21,10 @@ colors:
   on-danger: "#FFF4EF"
   watch: "#E3A21A"
   safe-fill: "#2C6B4B"
+  route-light: "#1550C8"
+  route-casing-light: "#0B2E73"
+  route-dark: "#5AA9FF"
+  route-casing-dark: "#0A2152"
 typography:
   title:
     fontFamily: "-apple-system, 'SF Pro Display', system-ui, sans-serif"
@@ -172,13 +176,15 @@ Two calm neutral worlds and three signal colors that each mean exactly one thing
 - **Slate Rule** (#3A3E44) / **Sand Rule** (#CDBFA6): hairline dividers between list rows only.
 
 ### Named Rules
-**The Earned Color Rule.** Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills are practice, not danger: they're always neutral.
+**The Earned Color Rule.** Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills use red as an **outline** (the alarm button), never a red fill, and every drill alert is labeled "Drill:".
 
 **The Danger Follows You Rule.** Live danger (an active alert, or a member asking for help) stays visible after the alert screen closes: a red Danger Banner at the top of the Map, and a red "!" badge on the Group tab.
 
 **The No White Rule.** No surface or text uses pure #FFFFFF. The brightest values are Mist (#ECEDEE), Sand Ink (#F4EEE3) and On Danger (#FFF4EF).
 
 **The Fill-or-Text Rule.** Red and green each come in two tokens. Use `colors.danger` / `colors.safeFill` for fills and `colors.dangerText` / `colors.safe` for text and icons. Never mix them.
+
+**The Route Blue Rule.** The route line is the one non-signal color: Route Blue (light #1550C8, dark #5AA9FF, at least 4.6:1 on map tiles), drawn 5pt wide over a 9pt dark-navy casing (#0B2E73 / #0A2152) with round caps. A straight-line fallback is dashed. Blue appears only on the route line, never in the UI.
 
 **The Identity Exception.** Group members each get a distinct identity color on the map (`memberPalette`), because people must be told apart at a glance. It's the only non-signal color.
 
@@ -204,11 +210,18 @@ Two calm neutral worlds and three signal colors that each mean exactly one thing
 
 A single column with a 20px gutter. Sections are separated by 28px of space and a 20px heading. There are no boxes, borders or rules between sections. Lists use hairline dividers between rows only.
 
-The map is full-bleed under a **rounded bottom sheet** (20px top corners). The sheet holds:
+The map is full-bleed under a **swipeable panel** (20px top corners, with a 40×5 grab handle). It has exactly two positions:
+
+- **Collapsed (default):** the handle, the destination and its one-line summary. The map leads.
+- **Open:** at least half the screen, with every action.
+
+Drag the top strip (handle plus destination), or tap it, to switch. A flick decides; otherwise the panel snaps to the nearer position. Selecting a place on the map opens the panel so Confirm and Cancel are in view, and it can't be collapsed until that choice is made. The panel animates on the JS driver, because a native-driver animation briefly redrew it at a stale position after a re-render. The map's padding follows whatever the panel covers. Options hidden while collapsed are hidden from screen readers and can't be tapped.
+
+Everything in the panel, top to bottom:
 - the destination name and a one-line summary;
 - one filled main button;
 - a row of two tonal buttons (Compass, Save map);
-- a plain, neutral "Practice a drill" link.
+- a red-outlined **Practice a drill** alarm button. A drill is sent to everyone in the group, and each member sees it once as a "Drill:" alert naming who started it.
 
 Red Danger Banners stack above everything at the top when an alert is active or someone needs help.
 
@@ -220,6 +233,8 @@ Forms appear inline only after their button is tapped (Join with a code, Start a
 
 ### Named Rules
 **The One Filled Button Rule.** Each screen has one filled button, the main action. Everything else is tonal or plain.
+
+**The Aligned Text Rule.** Helper text, hints, errors and credits follow the alignment of the content they belong to (left in every screen except the centered onboarding hero). No centered grey captions under left-aligned layouts, and no labels above titles: the title comes first, and any status line goes under it.
 
 **The Ask-First Rule.** Forms and editing controls stay hidden until the user taps the button that needs them.
 
@@ -245,7 +260,8 @@ Soft, friendly and consistent:
 - **Primary:** filled with the text color (Mist in dark, Bark in light), with page-color text. One per screen.
 - **Secondary:** a tonal fill (Slate Raised or Sand Deep) with text-color label and icon.
 - **Danger:** a Danger Red fill with On Danger text. Reserved for danger.
-- **Plain:** text only, 48pt tall. Used for Cancel, Leave group and Practice a disaster, with `tone="danger"` for red.
+- **Alarm:** the tonal fill with a 2px red outline and a red icon and label. Used for drills; it reads as red without competing with the filled main action.
+- **Plain:** text only, 48pt tall. Used for Cancel and Leave group, with `tone="danger"` for red.
 - **States:** pressed is 70% opacity; disabled is 45%; loading shows a spinner in the label color.
 
 ### Status pair (I'm safe / I need help)
@@ -253,6 +269,12 @@ Two 88pt tonal buttons with a 28pt icon above the label. "I'm safe" uses a green
 
 ### Danger Banner
 A full-width Danger Red banner (12px corners, at least 64pt tall) with a white-ish icon, a bold title and a one-line action: "Earthquake warning / Tap to see what to do", "Sis needs help / Tap to see where". Drills are titled "Drill: …". It is announced to screen readers and is the only red banner in the app.
+
+### Invite code
+Its own section on the Group screen: the code at 32/700 with 6px letter spacing, on a tonal row with a filled **Copy** button. The button turns into "Copied" with a check for 2 seconds, with a selection haptic. "Share invite" sits below. Screen readers hear the code spelled out letter by letter.
+
+### First aid topics
+A red filled **Call 911** button (64pt) sits at the top. It is a real emergency call, so a red fill is earned. Topics are tonal buttons (64pt): an icon, the title, "N steps" and a chevron. Tapping one opens its numbered steps (18/26) inside the same surface, which gets a 2px text-color outline while open (the border is always 2px, transparent when closed); only one is open at a time. The header layout never changes between open and closed: the second line swaps "N steps" for "Tap to close" and is never removed, because removing it made the title collapse on Android. There are two groups: "Someone is hurt" (first aid) and "During a disaster" (the six hazard guides from `src/lib/hazards.ts`). App settings (Appearance) sit below under "Settings".
 
 ### Onboarding
 Each step centers the icon (64pt, text color), title (28/700) and body (17, max ~340pt wide) as one block, with the buttons below.
@@ -297,7 +319,7 @@ A rounded tonal banner with a cloud-offline icon: "No signal · last updated 14 
 ### Don't:
 - **Don't** use pure white (#FFFFFF), shadows, gradients or blur.
 - **Don't** wrap content in bordered cards or build dashboard-style metric tiles (big number plus small label).
-- **Don't** use red, amber or green for anything that isn't danger, watch or safe, including drills and practice.
+- **Don't** use red, amber or green for anything that isn't danger, watch or safe. Drills may use the red alarm outline, never a red fill.
 - **Don't** change the meeting point or the route on a map tap or long-press alone; always select, then confirm.
 - **Don't** chain fragments with `·` in UI copy.
 - **Don't** put a label above a heading, or use type larger than 28pt outside the emergency headline.

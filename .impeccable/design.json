@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-18T02:22:51.758Z",
+  "generatedAt": "2026-10-18T02:56:04.800Z",
   "title": "Design System: SafeHaven",
   "extensions": {
     "colorMeta": {
@@ -288,6 +288,66 @@
           "#BEE4D1",
           "#EDF8F2"
         ]
+      },
+      "route-light": {
+        "role": "secondary",
+        "displayName": "Route Blue (light map)",
+        "canonical": "#1550C8",
+        "tonalRamp": [
+          "#071C45",
+          "#0C2E73",
+          "#1141A2",
+          "#1653D0",
+          "#2F6DE9",
+          "#6B97EF",
+          "#ACC4F6",
+          "#E8EFFD"
+        ]
+      },
+      "route-casing-light": {
+        "role": "neutral",
+        "displayName": "Route Casing (light map)",
+        "canonical": "#0B2E73",
+        "tonalRamp": [
+          "#071C46",
+          "#0B2F74",
+          "#1041A3",
+          "#1454D1",
+          "#2E6DEB",
+          "#6A97F1",
+          "#ABC5F7",
+          "#E8EFFD"
+        ]
+      },
+      "route-dark": {
+        "role": "secondary",
+        "displayName": "Route Blue (dark map)",
+        "canonical": "#5AA9FF",
+        "tonalRamp": [
+          "#00254D",
+          "#003D80",
+          "#0055B3",
+          "#006EE6",
+          "#1A87FF",
+          "#5CAAFF",
+          "#A3CFFF",
+          "#E5F2FF"
+        ]
+      },
+      "route-casing-dark": {
+        "role": "neutral",
+        "displayName": "Route Casing (dark map)",
+        "canonical": "#0A2152",
+        "tonalRamp": [
+          "#081B44",
+          "#0E2E72",
+          "#13409F",
+          "#1952CD",
+          "#326CE6",
+          "#6E96ED",
+          "#ADC4F5",
+          "#E8EFFC"
+        ]
       }
     },
     "typographyMeta": {
@@ -451,7 +511,7 @@
     "rules": [
       {
         "name": "The Earned Color Rule",
-        "body": "Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills are practice, not danger: they're always neutral.",
+        "body": "Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills use red as an **outline** (the alarm button), never a red fill, and every drill alert is labeled \"Drill:\".",
         "section": "colors"
       },
       {
@@ -470,6 +530,11 @@
         "section": "colors"
       },
       {
+        "name": "The Route Blue Rule",
+        "body": "The route line is the one non-signal color: Route Blue (light #1550C8, dark #5AA9FF, at least 4.6:1 on map tiles), drawn 5pt wide over a 9pt dark-navy casing (#0B2E73 / #0A2152) with round caps. A straight-line fallback is dashed. Blue appears only on the route line, never in the UI.",
+        "section": "colors"
+      },
+      {
         "name": "The Identity Exception",
         "body": "Group members each get a distinct identity color on the map (`memberPalette`), because people must be told apart at a glance. It's the only non-signal color.",
         "section": "colors"
@@ -482,6 +547,11 @@
       {
         "name": "The One Filled Button Rule",
         "body": "Each screen has one filled button, the main action. Everything else is tonal or plain.",
+        "section": "layout"
+      },
+      {
+        "name": "The Aligned Text Rule",
+        "body": "Helper text, hints, errors and credits follow the alignment of the content they belong to (left in every screen except the centered onboarding hero). No centered grey captions under left-aligned layouts, and no labels above titles: the title comes first, and any status line goes under it.",
         "section": "layout"
       },
       {
@@ -507,7 +577,7 @@
     "donts": [
       "Don't use pure white (#FFFFFF), shadows, gradients or blur.",
       "Don't wrap content in bordered cards or build dashboard-style metric tiles (big number plus small label).",
-      "Don't use red, amber or green for anything that isn't danger, watch or safe, including drills and practice.",
+      "Don't use red, amber or green for anything that isn't danger, watch or safe. Drills may use the red alarm outline, never a red fill.",
       "Don't change the meeting point or the route on a map tap or long-press alone; always select, then confirm.",
       "Don't chain fragments with `·` in UI copy.",
       "Don't put a label above a heading, or use type larger than 28pt outside the emergency headline.",
