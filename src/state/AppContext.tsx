@@ -7,7 +7,7 @@ import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
-import { DETAILS_MAX, JOIN_GRACE_MS, mergeAnnouncements, TITLE_MAX, type SavedAnnouncement } from '@/lib/announcements';
+import { DETAILS_MAX, mergeAnnouncements, SEEN_CAP, TITLE_MAX, type SavedAnnouncement } from '@/lib/announcements';
 import { DEMO_ANNOUNCEMENT, DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
 import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
@@ -191,6 +191,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const seenAnnouncements = useRef<string[]>([]);
   // [UI] When this phone first had each group; announcements sent before that never pop up.
   const groupJoinedAt = useRef<Record<string, number>>({});
+  // [UI] Groups just joined: whatever their first server snapshot holds was already there, so it is
+  // recorded as seen and never shown (doesn't rely on phones' clocks agreeing).
+  const baselineGroups = useRef(new Set<string>());
   const announcementsLoaded = useRef(false);
   // Lets the group listener (set up before `actions`) re-route when the meeting point moves.
   const actionsRef = useRef<AppActions | null>(null);
@@ -354,6 +357,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** [UI] Records that this phone joined a group now (before its announcement listener starts). */
   const markJoined = useCallback((groupId: string) => {
     groupJoinedAt.current = { ...groupJoinedAt.current, [groupId]: Date.now() };
+    baselineGroups.current.add(groupId);
     persistAnnouncements(stateRef.current.announcements);
   }, [persistAnnouncements]);
   const [announcementsReady, setAnnouncementsReady] = useState(false);
@@ -378,12 +382,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const ids = groupIdsKey.split(',');
     const prev = groupJoinedAt.current;
     const next = Object.fromEntries(ids.map((id) => [id, prev[id] ?? Date.now()]));
+    for (const id of ids) if (!(id in prev)) baselineGroups.current.add(id);
     if (ids.length !== Object.keys(prev).length || ids.some((id) => !(id in prev))) {
       groupJoinedAt.current = next;
       persistAnnouncements(stateRef.current.announcements);
     }
     // Only ask for announcements sent since this phone joined each group.
-    const unsubs = ids.map((id) => fb.subscribeAnnouncements(id, next[id] - JOIN_GRACE_MS, receiveAnnouncements));
+    const unsubs = ids.map((id) =>
+      fb.subscribeAnnouncements(id, next[id], (items, fromServer) => {
+        if (!baselineGroups.current.has(id)) return receiveAnnouncements(items);
+        seenAnnouncements.current = [...new Set([...seenAnnouncements.current, ...items.map((a) => a.id)])].slice(-SEEN_CAP);
+        if (fromServer) baselineGroups.current.delete(id);
+        persistAnnouncements(stateRef.current.announcements);
+      }),
+    );
     return () => unsubs.forEach((u) => u());
   }, [announcementsReady, groupIdsKey, authedUid, receiveAnnouncements, persistAnnouncements]);
 

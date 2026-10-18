@@ -356,8 +356,12 @@ export async function addSafeArea(groupId: string, place: Place): Promise<void> 
 export const ANNOUNCEMENTS_FETCHED = 10;
 
 /** Live latest announcements for one group sent at or after `since` (ms), newest first.
- *  Never throws; errors are logged. */
-export function subscribeAnnouncements(groupId: string, since: number, cb: (items: Announcement[]) => void): () => void {
+ *  `fromServer` is false while the list is only from the local cache. Never throws; errors are logged. */
+export function subscribeAnnouncements(
+  groupId: string,
+  since: number,
+  cb: (items: Announcement[], fromServer: boolean) => void,
+): () => void {
   const firestore = getDb();
   if (!firestore) return () => {};
   return onSnapshot(
@@ -367,6 +371,7 @@ export function subscribeAnnouncements(groupId: string, since: number, cb: (item
       orderBy('sentAt', 'desc'),
       limit(ANNOUNCEMENTS_FETCHED),
     ),
+    { includeMetadataChanges: true },
     (snap) =>
       cb(
         snap.docs.map((d) => {
@@ -384,6 +389,7 @@ export function subscribeAnnouncements(groupId: string, since: number, cb: (item
             recipientIds: Array.isArray(a.recipientIds) ? a.recipientIds.map(String) : undefined,
           } satisfies Announcement;
         }),
+        !snap.metadata.fromCache,
       ),
     (e) => console.warn('subscribeAnnouncements', e.message),
   );

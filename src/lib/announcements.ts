@@ -5,8 +5,6 @@ import type { Announcement } from '@/types';
 export const KEEP_ANNOUNCEMENTS = 10;
 /** Only announcements newer than this raise a banner/notification (older ones are just history). */
 export const BANNER_FRESH_MS = 24 * 60 * 60_000;
-/** Slack for the sender's clock: sent up to this long before you joined still counts as new. */
-export const JOIN_GRACE_MS = 60_000;
 /** Character limits (firestore.rules enforces the same). */
 export const TITLE_MAX = 140;
 export const DETAILS_MAX = 500;
@@ -33,7 +31,7 @@ export function mergeAnnouncements(
 ): { saved: SavedAnnouncement[]; seen: string[]; alerts: SavedAnnouncement[] } {
   const seenSet = new Set(seen);
   const added: SavedAnnouncement[] = [];
-  const beforeJoin = (a: Announcement) => a.sentAt < (joinedAt[a.groupId] ?? 0) - JOIN_GRACE_MS;
+  const beforeJoin = (a: Announcement) => a.sentAt < (joinedAt[a.groupId] ?? 0);
   // Ones we already keep only pick up new "seen" acks (merged, so a local ack isn't lost).
   saved = saved.filter((s) => !beforeJoin(s)).map((s) => {
     const fresh = incoming.find((a) => a.id === s.id);

@@ -1,4 +1,4 @@
-// [OWNER: MAP/OFFLINE] Walking route fetched while online, cached for offline use.
+s// [OWNER: MAP/OFFLINE] Walking route fetched while online, cached for offline use.
 import { distanceM } from '@/lib/geo';
 import type { LatLng, Place, Route } from '@/types';
 
