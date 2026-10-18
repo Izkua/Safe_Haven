@@ -2,12 +2,13 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { OnboardingGate, useOnboarding } from '@/components/OnboardingGate';
 import { AppProvider } from '@/state/AppContext';
+import { colors } from '@/theme';
 
 export default function RootLayout() {
   return (
     <AppProvider>
       <OnboardingGate>
-        <StatusBar style="auto" />
+        <StatusBar style="dark" />
         <RootStack />
       </OnboardingGate>
     </AppProvider>
@@ -18,14 +19,23 @@ export default function RootLayout() {
 function RootStack() {
   const { onboarded } = useOnboarding();
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.bg },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        headerTitleStyle: { fontWeight: '700' },
+        contentStyle: { backgroundColor: colors.bg },
+      }}
+    >
       <Stack.Protected guard={!onboarded}>
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
       </Stack.Protected>
       <Stack.Protected guard={onboarded}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="alert" options={{ presentation: 'modal', title: 'Emergency Alert' }} />
-        <Stack.Screen name="compass" options={{ title: 'Offline Compass' }} />
+        {/* [UI] Alert is a full-screen takeover (no header, no swipe-away); dismiss is inside the screen. */}
+        <Stack.Screen name="alert" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
       </Stack.Protected>
     </Stack>
   );

@@ -9,7 +9,7 @@ import { useOnboarding } from '@/components/OnboardingGate';
 import { requestNotificationPermission } from '@/services/alerts';
 import { requestForegroundPermission } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 
 const STEPS = ['welcome', 'name', 'location', 'notifications', 'group'] as const;
 type Step = (typeof STEPS)[number];
@@ -270,15 +270,15 @@ const styles = StyleSheet.create({
   back: { flexDirection: 'row', alignItems: 'center', minWidth: 80, minHeight: 48 },
   backText: { color: colors.text, fontSize: 17 },
   dots: { flexDirection: 'row', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.card },
-  dotActive: { backgroundColor: colors.primary },
+  dot: { width: 8, height: 8, backgroundColor: colors.rule },
+  dotActive: { backgroundColor: colors.text },
   page: { flexGrow: 1, justifyContent: 'space-between', padding: 24, gap: 32 },
-  hero: { alignItems: 'center', gap: 16, marginTop: 32 },
-  title: { color: colors.text, fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  body: { color: colors.muted, fontSize: 17, lineHeight: 24, textAlign: 'center' },
+  hero: { alignItems: 'flex-start', gap: 16, marginTop: 32 },
+  title: { color: colors.text, fontSize: 40, lineHeight: 42, fontWeight: '700' },
+  body: { color: colors.muted, fontSize: 18, lineHeight: 26 },
   actions: { gap: 12 },
-  input: { backgroundColor: colors.card, color: colors.text, borderRadius: 14, paddingHorizontal: 16, minHeight: 56, fontSize: 18 },
+  input: { backgroundColor: colors.bg, color: colors.text, borderWidth: 1, borderColor: colors.text, borderRadius: radius, paddingHorizontal: 16, minHeight: 56, fontSize: 18 },
   codeInput: { textAlign: 'center', fontSize: 26, fontWeight: '700', letterSpacing: 6 },
-  warn: { color: colors.warn, fontSize: 15, lineHeight: 21, textAlign: 'center' },
-  error: { color: colors.danger, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  warn: { color: colors.text, fontSize: 16, lineHeight: 23, fontWeight: '600' },
+  error: { color: colors.danger, fontSize: 16, fontWeight: '700' },
 });

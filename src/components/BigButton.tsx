@@ -2,7 +2,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { colors } from '@/theme';
+import { colors, minTarget, radius } from '@/theme';
 
 type Props = {
   label: string;
@@ -16,7 +16,7 @@ type Props = {
 export function BigButton({ label, onPress, variant = 'primary', icon, disabled, loading }: Props) {
   const filled = variant !== 'secondary';
   const bg = variant === 'danger' ? colors.danger : variant === 'primary' ? colors.primary : 'transparent';
-  const fg = filled ? '#fff' : colors.text;
+  const fg = variant === 'danger' ? colors.onDanger : filled ? colors.onPrimary : colors.text;
   const inactive = disabled || loading;
   return (
     <Pressable
@@ -27,7 +27,7 @@ export function BigButton({ label, onPress, variant = 'primary', icon, disabled,
       onPress={onPress}
       style={({ pressed }) => [
         styles.btn,
-        { backgroundColor: bg, borderColor: filled ? bg : colors.muted, opacity: inactive ? 0.5 : pressed ? 0.75 : 1 },
+        { backgroundColor: bg, borderColor: filled ? bg : colors.text, opacity: inactive ? 0.4 : pressed ? 0.75 : 1 },
       ]}
     >
       {loading ? (
@@ -44,14 +44,14 @@ export function BigButton({ label, onPress, variant = 'primary', icon, disabled,
 
 const styles = StyleSheet.create({
   btn: {
-    minHeight: 56,
-    borderRadius: 14,
-    borderWidth: 2,
+    minHeight: minTarget,
+    borderRadius: radius,
+    borderWidth: 1,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: 10,
   },
-  label: { fontSize: 18, fontWeight: '700' },
+  label: { fontSize: 19, fontWeight: '700' },
 });
