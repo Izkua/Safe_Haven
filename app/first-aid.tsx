@@ -1,7 +1,6 @@
-// [OWNER: UI · STRETCH] First aid + disaster guides as tappable topics. The gear opens Settings.
+// [OWNER: UI] First aid + disaster guides as tappable topics. Opened from Settings.
 // Everything here is bundled in the app, so it works with no signal.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
 import { useState, type ComponentProps } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +21,7 @@ const FIRST_AID: Topic[] = [
 // The same step-by-step guidance the alert screen shows, readable any time.
 const DISASTERS: Topic[] = HAZARD_TYPES.map((h) => ({ id: h, title: HAZARDS[h].label, icon: HAZARDS[h].icon, steps: HAZARDS[h].steps }));
 
-export default function InfoScreen() {
+export default function FirstAidScreen() {
   const [open, setOpen] = useState<string | null>(null);
 
   const toggle = (id: string) => {
@@ -31,20 +30,8 @@ export default function InfoScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={styles.screen}>
+    <SafeAreaView edges={['bottom']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.pad}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, styles.flex]} accessibilityRole="header">First aid</Text>
-          <Pressable
-            onPress={() => { tap(); router.push('/settings'); }}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            style={({ pressed }) => [styles.gear, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Ionicons name="settings-outline" size={24} color={colors.text} />
-          </Pressable>
-        </View>
         <Text style={styles.lead}>Works without signal. Tap a topic to see the steps.</Text>
 
         <BigButton
@@ -109,9 +96,6 @@ function TopicButton({ topic, open, onPress }: { topic: Topic; open: boolean; on
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  flex: { flex: 1 },
-  gear: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
   call: { marginTop: 20, minHeight: 64 },

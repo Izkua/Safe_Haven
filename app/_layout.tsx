@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { HeaderBack } from '@/components/HeaderBack';
+import { AnnouncementBanner } from '@/components/AnnouncementBanner';
 import { OnboardingGate, useOnboarding } from '@/components/OnboardingGate';
 import { AppProvider } from '@/state/AppContext';
 import { useColorScheme } from 'react-native';
@@ -22,6 +23,7 @@ function RootStack() {
   const { onboarded } = useOnboarding();
   const header = headerColors(useColorScheme());
   return (
+    <>
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: header.bg },
@@ -52,15 +54,26 @@ function RootStack() {
           name="settings"
           options={{
             title: 'Settings',
-            headerBackTitle: 'First aid',
-            // [UI] Themed back button (the iOS 26 glass one ignores light / dark mode).
-            headerLeft: () => <HeaderBack label="First aid" color={header.text} background={header.card} />,
-            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="First aid" color={header.text} background={header.card} />, hidesSharedBackground: true }],
+            headerBackTitle: 'Back',
+            headerLeft: () => <HeaderBack label="Back" color={header.text} background={header.card} />,
+            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="Back" color={header.text} background={header.card} />, hidesSharedBackground: true }],
+          }}
+        />
+        <Stack.Screen
+          name="first-aid"
+          options={{
+            title: 'First aid',
+            headerBackTitle: 'Settings',
+            headerLeft: () => <HeaderBack label="Settings" color={header.text} background={header.card} />,
+            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="Settings" color={header.text} background={header.card} />, hidesSharedBackground: true }],
           }}
         />
         <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
         <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Practice a drill' }} />
       </Stack.Protected>
     </Stack>
+    {/* [UI] Announcement banner over every screen; stays until dismissed. */}
+    {onboarded && <AnnouncementBanner />}
+    </>
   );
 }

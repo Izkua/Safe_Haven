@@ -1,7 +1,7 @@
 // Demo data around UW Seattle. Used when Firebase isn't configured (DEMO MODE)
 // so UI/map work can start before the backend exists.
 import { HAZARDS, simulatedArea } from '@/lib/hazards';
-import type { Group, HazardAlert, HazardType, LatLng, Member } from '@/types';
+import type { Announcement, Group, HazardAlert, HazardType, LatLng, Member } from '@/types';
 
 export const UW_CENTER: LatLng = { latitude: 47.6553, longitude: -122.3035 };
 
@@ -28,6 +28,17 @@ export const DEMO_MEMBERS: Member[] = [
   { uid: 'mom', name: 'Mom', location: { latitude: 47.6615, longitude: -122.3128 }, locationTs: now - 3 * 60_000, status: 'safe' },
   { uid: 'sis', name: 'Sis', location: { latitude: 47.6585, longitude: -122.3005 }, locationTs: now - 25 * 60_000, status: 'need_help' },
 ];
+
+/** Demo-only announcement that "arrives" a few seconds after you send one, so the banner and
+ *  notification can be tried with one phone. */
+export const DEMO_ANNOUNCEMENT: Omit<Announcement, 'id' | 'sentAt'> = {
+  groupId: DEMO_GROUP.id,
+  groupName: DEMO_GROUP.name,
+  title: 'Everyone meet at Drumheller Fountain at 5:00',
+  details: 'Please be there soon',
+  senderId: 'mom',
+  senderName: 'Mom',
+};
 
 export function makeSimulatedAlert(at: LatLng, hazard: HazardType = 'earthquake'): HazardAlert {
   const h = HAZARDS[hazard];
