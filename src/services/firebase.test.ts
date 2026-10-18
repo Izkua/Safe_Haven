@@ -182,3 +182,10 @@ test('normal meeting edits reset haven mode and keep the new usual point', async
   await fb.setMeetingPlace('g1', place);
   expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g1' }), { meetingPlace: place, usualMeetingPlace: place, activeHaven: null });
 });
+
+test('ending a drill with no usual point clears only active destination fields', async () => {
+  mockUpdateDoc.mockResolvedValue(undefined);
+  const patch = { meetingPlace: null, usualMeetingPlace: null, activeHaven: null };
+  await expect(fb.switchMeetingDestination('g1', patch)).resolves.toBe(true);
+  expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g1' }), patch);
+});

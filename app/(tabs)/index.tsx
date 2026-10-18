@@ -8,7 +8,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { DangerBanner } from '@/components/DangerBanner';
 import { GroupFilter } from '@/components/GroupFilter';
-import { MeetingOptions } from '@/components/MeetingOptions';
 import { HoldGroupPicker, type PickOption } from '@/components/HoldGroupPicker';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -527,9 +526,7 @@ export default function MapScreen() {
                 accessibilityHint={routeShown && !canRetry ? 'Hold a spot on the map to pick a new meeting point' : undefined}
                 onPress={() => void actions.routeToBestTarget()}
               />
-              <View style={styles.row}>
               <BigButton
-                style={styles.half}
                 label={group?.meetingPlace ? 'Change meeting point' : 'Set meeting point'}
                 icon="flag-outline"
                 variant="secondary"
@@ -540,8 +537,6 @@ export default function MapScreen() {
                   startNaming(null, current);
                 }}
               />
-              {group && <MeetingOptions group={group} style={styles.half} />}
-              </View>
               <View style={styles.row}>
                 <BigButton label="Compass" icon="compass-outline" variant="secondary" style={styles.half} onPress={() => router.push('/compass')} />
                 <BigButton

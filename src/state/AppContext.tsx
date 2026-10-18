@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import { destinationPatch, savedHaven, usualMeetingPoint, validHaven, withSavedHaven } from '@/lib/havens';
+import { destinationPatch, endDrillDestination, savedHaven, usualMeetingPoint, validHaven, withSavedHaven } from '@/lib/havens';
 import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
@@ -171,7 +171,7 @@ export interface AppActions {
   findHavenAddress(address: string): Promise<LatLng | null>;
   restoreUsualMeetingPoint(groupId: string): Promise<Place | null>;
   adoptDisasterHaven(groupId: string, hazard: HazardType): Promise<Place | null>;
-  dismissAlert(): void;
+  dismissAlert(): Promise<boolean>;
   setTiles(tiles: TileRegion | null): void;
   setPreparedOffline(route: Route, tiles: TileRegion | null): void;
   /** [UI] Send an announcement to a group (default: the current one). False if empty or not signed in. */
@@ -644,8 +644,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ activeAlert: drillAlert(drill, true, group?.id) });
         if (group && !DEMO_MODE) await fb.startGroupDrill(group.id, drill);
       },
-      dismissAlert() {
-        set({ activeAlert: null });
+      async dismissAlert() {
+        const alert = s().activeAlert;
+        if (!alert) return true;
+        const group = alert.groupId ? s().groups.find(g => g.id === alert.groupId) : null;
+        const patch = endDrillDestination(group, alert);
+        if (patch && group) {
+          if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+            Alert.alert('Reconnect to end the shared drill', 'Your group’s meeting point is locked offline. Reconnect to restore the usual point; your saved haven will be kept.');
+            return false;
+          }
+          if (!s().myUid || !group.memberIds.includes(s().myUid!)) return false;
+          if (patch.meetingPlace) patch.meetingPlace = { ...patch.meetingPlace, id: 'meet', setBy: s().myUid!, setByName: s().myName, setAt: Date.now() };
+          if (!DEMO_MODE && !(await fb.switchMeetingDestination(group.id, patch))) {
+            Alert.alert('Could not end the shared drill', 'The meeting point change was not confirmed. Check your connection and try again.');
+            return false;
+          }
+          const latest = s().groups.find(g => g.id === group.id);
+          if (latest) {
+            seenMeetings.current.set(group.id, meetingKey(patch.meetingPlace));
+            dispatch({ type: 'upsertGroup', group: { ...latest, ...patch } });
+          }
+        }
+        // A newer alert must not be dismissed by an older request completing.
+        if (s().activeAlert?.id !== alert.id) return false;
+        const currentDrill = alert.source === 'simulated' && (!alert.groupId || alert.groupId === s().activeGroupId);
+        if (currentDrill) {
+          beginRouteRequest(); // invalidate any in-flight route to the haven
+          set({ activeAlert: null, route: null, routingLoading: false, routingMessage: null, routeIsCached: false });
+          const normal = patch ? patch.meetingPlace : group?.meetingPlace ?? null;
+          if (normal) void routeTo(normal);
+        } else set({ activeAlert: null });
+        return true;
       },
       setPreparedOffline(route, tiles) {
         set({ route, tiles, routeIsCached: false });

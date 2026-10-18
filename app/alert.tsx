@@ -12,7 +12,7 @@ import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
-import { savedHaven } from '@/lib/havens';
+import { savedHaven, usualMeetingPoint } from '@/lib/havens';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { isUserAffected } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
@@ -33,6 +33,10 @@ export default function AlertScreen() {
   const a = state.activeAlert;
   const me = state.myLocation;
   const [adopting, setAdopting] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const endingRef = useRef(false);
+  const [destination, setDestination] = useState<'haven' | 'usual'>('haven');
+  useEffect(() => { setDestination('haven'); }, [a?.id]);
   // Unknown location: assume affected, so the user still sees the safety steps.
   const affected = a ? (me ? isUserAffected(a, me) : true) : false;
   // Outside the area the tone drops to "watch": stay ready, no takeover.
@@ -59,10 +63,20 @@ export default function AlertScreen() {
     stopBuzz.current();
     actions.setStatus('safe');
   };
-  const dismiss = () => {
+  const dismiss = async () => {
+    if (endingRef.current || adopting) return;
+    endingRef.current = true;
+    setEnding(true);
     stopBuzz.current();
-    actions.dismissAlert();
-    router.back();
+    try {
+      if (await actions.dismissAlert()) {
+        const drillGroup = a?.groupId ? state.groups.find(g => g.id === a.groupId) : null;
+        const normal = drillGroup ? usualMeetingPoint(drillGroup) : null;
+        if (a?.source === 'simulated' && normal && drillGroup?.id === state.activeGroupId) requestMapFocus({ place: normal, label: normal.name, showMe: true });
+        if (router.canDismiss()) router.dismissAll();
+        router.navigate('/');
+      }
+    } finally { endingRef.current = false; setEnding(false); }
   };
 
   if (!a) {
@@ -81,6 +95,7 @@ export default function AlertScreen() {
 
   const group = a.groupId ? state.groups.find(g => g.id === a.groupId) ?? null : state.group;
   const suggestion = a.source === 'simulated' && a.groupId && a.hazard ? savedHaven(group, a.hazard) : null;
+  const usual = group ? usualMeetingPoint(group) : null;
   const best: Place | null = me
     ? a.hazard ? pickSafeTarget(a.hazard, me, group) : group ? nearestPlace(me, group.safeAreas) : null
     : null;
@@ -128,6 +143,22 @@ export default function AlertScreen() {
       </View>
 
       <ScrollView style={styles.flex} contentContainerStyle={styles.body}>
+        {suggestion && group && <View style={[styles.destinationCard, { backgroundColor: tonal }]}>
+          <Text style={[styles.labelText, { color: fg }]}>Meeting point · {group.name}</Text>
+          <View style={styles.btnRow}>
+            {(['usual', 'haven'] as const).map(choice => {
+              const place = choice === 'usual' ? usual : suggestion;
+              const selected = destination === choice;
+              return <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected, disabled: !place || adopting || ending }}
+                disabled={!place || adopting || ending} onPress={() => setDestination(choice)}
+                style={[styles.destinationChoice, { borderColor: selected ? fg : 'transparent', opacity: place ? 1 : 0.5 }]}>
+                <Text style={[styles.labelText, { color: fg }]}>{choice === 'usual' ? 'Usual point' : `${info?.label ?? 'Disaster'} haven`}</Text>
+                <Text style={{ color: soft }} numberOfLines={2}>{place?.name ?? 'Not set'}</Text>
+              </Pressable>;
+            })}
+          </View>
+          <Text style={{ color: soft, fontSize: 13 }}>Go updates the group’s meeting point. Ending this drill restores the usual point.</Text>
+        </View>}
         {/* The most urgent actions, in a card that stands out from everything else. */}
         <View style={[styles.nowCard, { backgroundColor: emergency ? colors.onDanger : colors.card }]}>
           <Text style={[styles.nowLabel, { color: emergency ? colors.danger : affected ? colors.dangerText : colors.safe }]}>
@@ -155,12 +186,12 @@ export default function AlertScreen() {
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
         {suggestion && group && a.hazard && <>
-          <Text style={{ color: soft, textAlign: 'center' }}>{group.name}: {suggestion.name} · your group’s saved choice</Text>
-          <BigButton label="Go to suggested meeting point" icon="flag" loading={adopting} disabled={!state.isOnline}
+          <BigButton label={destination === 'haven' ? 'Go to suggested meeting point' : 'Go to usual meeting point'} icon="flag" loading={adopting} disabled={!state.isOnline || ending || (destination === 'usual' && !usual)}
             accessibilityHint="Updates the meeting point for this whole group, then opens the map"
             onPress={() => {
               setAdopting(true);
-              void actions.adoptDisasterHaven(group.id, a.hazard!).then(place => { if (place) go(place); }).finally(() => setAdopting(false));
+              const request = destination === 'haven' ? actions.adoptDisasterHaven(group.id, a.hazard!) : actions.restoreUsualMeetingPoint(group.id);
+              void request.then(place => { if (place) go(place); }).finally(() => setAdopting(false));
             }} />
           {!state.isOnline && <Text style={{ color: soft }}>Reconnect to update the group meeting point.</Text>}
         </>}
@@ -192,15 +223,16 @@ export default function AlertScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityHint="Press and hold to dismiss this emergency alert"
-            onLongPress={dismiss}
+            onLongPress={() => void dismiss()}
+            disabled={adopting || ending}
             delayLongPress={800}
             style={styles.dismiss}
           >
-            <Text style={[styles.dismissText, { color: fg }]}>Press and hold to dismiss</Text>
+            <Text style={[styles.dismissText, { color: fg }]}>{ending ? 'Ending drill…' : 'Press and hold to dismiss'}</Text>
           </Pressable>
         ) : (
-          <Pressable accessibilityRole="button" onPress={dismiss} style={styles.dismiss}>
-            <Text style={[styles.dismissText, { color: fg }]}>Dismiss</Text>
+          <Pressable accessibilityRole="button" onPress={() => void dismiss()} disabled={adopting || ending} style={styles.dismiss}>
+            <Text style={[styles.dismissText, { color: fg }]}>{ending ? 'Ending drill…' : 'Dismiss'}</Text>
           </Pressable>
         )}
       </View>
@@ -239,6 +271,9 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   cardIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   cardText: { flex: 1, fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  destinationCard: { borderRadius: 16, padding: 14, gap: 12 },
+  destinationChoice: { flex: 1, minHeight: 78, padding: 12, gap: 6, borderWidth: 2, borderRadius: 12 },
+  labelText: { fontSize: 16, fontWeight: '700' },
   btnRow: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   fine: { marginTop: 4, fontSize: 13, lineHeight: 18 },
