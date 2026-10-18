@@ -1,5 +1,5 @@
 // [OWNER: UI] Big bold distance with a smaller unit: "340 m", "1.2 km" (design: numbers · bold).
-import { StyleSheet, Text, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type ColorValue, type TextStyle } from 'react-native';
 import { colors } from '@/theme';
 
 export function splitDistance(m: number): { value: string; unit: string } {
@@ -7,7 +7,7 @@ export function splitDistance(m: number): { value: string; unit: string } {
   return { value: (m / 1000).toFixed(m < 10_000 ? 1 : 0), unit: 'km' };
 }
 
-export function BigNumber({ meters, size = 56, color = colors.text, style }: { meters: number | null; size?: number; color?: string; style?: TextStyle }) {
+export function BigNumber({ meters, size = 56, color = colors.text, style }: { meters: number | null; size?: number; color?: ColorValue; style?: TextStyle }) {
   if (meters === null || !Number.isFinite(meters)) {
     return <Text style={[styles.num, { fontSize: size, lineHeight: size * 0.95, color: colors.muted }, style]}>—</Text>;
   }
@@ -21,5 +21,5 @@ export function BigNumber({ meters, size = 56, color = colors.text, style }: { m
 }
 
 const styles = StyleSheet.create({
-  num: { fontWeight: '700', fontVariant: ['tabular-nums'] },
+  num: { fontWeight: '600', fontVariant: ['tabular-nums'] },
 });

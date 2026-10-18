@@ -6,7 +6,7 @@ import { HAZARD_TYPES, HAZARDS } from '@/lib/hazards';
 import { UW_CENTER } from '@/mocks/demo';
 import { makeSimulatedAlert } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 import type { HazardType } from '@/types';
 
 export default function SimulateScreen() {
@@ -19,11 +19,11 @@ export default function SimulateScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 24 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 20 }}>
       <Text style={styles.hint}>Simulates a warning centered on your location so you can practice what to do.</Text>
       {HAZARD_TYPES.map((h) => (
-        <Pressable key={h} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={() => simulate(h)}>
-          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.danger} />
+        <Pressable key={h} accessibilityRole="button" accessibilityLabel={`Practice ${HAZARDS[h].label}`} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={() => simulate(h)}>
+          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.dangerText} />
           <Text style={styles.label}>{HAZARDS[h].label}</Text>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>
@@ -34,7 +34,7 @@ export default function SimulateScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  hint: { color: colors.muted, fontSize: 16, lineHeight: 23, marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, borderTopWidth: 1, borderColor: colors.text, paddingHorizontal: 4 },
-  label: { flex: 1, color: colors.text, fontSize: 20, fontWeight: '700' },
+  hint: { color: colors.muted, fontSize: 17, lineHeight: 24, marginBottom: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, backgroundColor: colors.card, borderRadius: radius, paddingHorizontal: 16, marginBottom: 10 },
+  label: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '600' },
 });

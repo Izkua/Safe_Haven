@@ -1,19 +1,18 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
-// Design: map + bone bottom sheet (meeting point, big distance, one ink action). Color only for danger.
+// Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActionButton } from '@/components/ActionButton';
-import { BigNumber } from '@/components/BigNumber';
+import { BigButton } from '@/components/BigButton';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { distanceM, formatAge, nearestPlace } from '@/lib/geo';
+import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
 import { downloadRegion, localTilePath, ONLINE_TILE_URL, planTiles, TILE_ATTRIBUTION, tileConfigurationError } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
-import { colors, memberColor, minTarget, radius } from '@/theme';
+import { colors, mapOverlayColors, memberColor, radius } from '@/theme';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
@@ -23,6 +22,7 @@ const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
+  const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
   const { group, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const mapRef = useRef<MapView>(null);
   const downloadBusy = useRef(false);
@@ -74,11 +74,19 @@ export default function MapScreen() {
     ]);
   };
 
-  const primaryLabel = routingLoading
-    ? 'Finding walking route…'
-    : route
-      ? `Route shown${walk ? ` · ${walk}` : ''}`
-      : `Start route${walk ? ` · ${walk}` : ''}`;
+  const busyLabel = tileProgress ? `Saving map ${tileProgress}` : null;
+  const goLabel = routingLoading
+    ? "Finding walking route…"
+    : !target
+      ? "Set a meeting point first"
+      : route
+        ? `Update route to ${target.name}`
+        : target.label === "Nearest safe area"
+          ? "Go to nearest safe area"
+          : "Go to meeting point";
+  const summary = target
+    ? [target.label, meters !== null ? formatDistance(meters) : null, walk].filter(Boolean).join(" · ")
+    : "Long-press the map to drop a meeting point.";
   const attribution = !isOnline ? (tiles?.attribution ?? TILE_ATTRIBUTION) : TILE_ATTRIBUTION;
 
   return (
@@ -92,7 +100,7 @@ export default function MapScreen() {
         showsCompass
         mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
-        mapPadding={{ top: 0, left: 0, right: 0, bottom: 230 }}
+        mapPadding={{ top: 0, left: 0, right: 0, bottom: 290 }}
         onLongPress={(e) => {
           if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
           void actions.setMeetingPlace(e.nativeEvent.coordinate);
@@ -102,11 +110,11 @@ export default function MapScreen() {
         {!isOnline && tiles && <LocalTile key={tiles.downloadedAt} pathTemplate={localTilePath(tiles)} tileSize={256} />}
 
         {activeAlert?.areas.map((ring, i) => (
-          <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(196,22,28,0.12)" strokeColor={colors.danger} strokeWidth={2} />
+          <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
         {route && (
-          <Polyline coordinates={route.points} strokeColor={colors.text} strokeWidth={4} lineDashPattern={route.isStraightLine ? [10, 8] : undefined} />
+          <Polyline coordinates={route.points} strokeColor={overlay.route} strokeWidth={4} lineDashPattern={route.isStraightLine ? [10, 8] : undefined} />
         )}
 
         {meetingPlace && (
@@ -145,63 +153,48 @@ export default function MapScreen() {
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         <OfflineBanner />
-        {!isOnline && tiles && <Text style={styles.notice}>Saved map · {formatAge(Date.now() - tiles.downloadedAt)} · downloaded areas only</Text>}
-        {!isOnline && <Text style={styles.notice}>Meeting place locked while offline</Text>}
+        {!isOnline && tiles && <Text style={styles.notice}>Using the map saved {formatAge(Date.now() - tiles.downloadedAt)}. Meeting point can’t change offline.</Text>}
+        {!isOnline && !tiles && <Text style={styles.notice}>Meeting point can’t change while offline.</Text>}
         {routingMessage && <Text style={styles.notice}>{routingMessage}</Text>}
-        {DEMO_MODE && <Text style={styles.demo}>Demo mode · no Firebase config</Text>}
+        {DEMO_MODE && <Text style={styles.demo}>Demo mode</Text>}
       </SafeAreaView>
 
       <View style={styles.sheet}>
-        {target ? (
-          <View style={styles.sheetHead}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.label}>{target.label}</Text>
-              <Text style={styles.targetName} numberOfLines={2}>{target.name}</Text>
-            </View>
-            <BigNumber meters={meters} size={52} />
-          </View>
-        ) : (
-          <View style={{ gap: 4 }}>
-            <Text style={styles.label}>No meeting point yet</Text>
-            <Text style={styles.targetName}>Long-press the map to set one</Text>
-          </View>
-        )}
-
-        {route && (
-          <Text style={styles.fine}>
-            {route.isStraightLine ? 'Straight-line direction' : 'Walking route'}
-            {!route.isStraightLine && (routeIsCached || !isOnline) ? ` · saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}` : ''}
-            {' · does not account for hazards · '}
-            <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
-            {' · '}
-            <Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text>
-            {' · '}
-            <Text style={styles.link} onPress={() => Linking.openURL(`https://www.openstreetmap.org/fixthemap?mlat=${route.to.latitude}&mlon=${route.to.longitude}#map=17/${route.to.latitude}/${route.to.longitude}`)}>Fix the map</Text>
+        <View style={styles.sheetHead}>
+          <Text style={styles.targetName} numberOfLines={2} accessibilityRole="header">
+            {target ? target.name : "No meeting point yet"}
           </Text>
-        )}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={primaryLabel}
-          disabled={routingLoading || !target}
-          onPress={() => void actions.routeToBestTarget()}
-          style={({ pressed }) => [styles.primary, { opacity: !target ? 0.4 : pressed || routingLoading ? 0.75 : 1 }]}
-        >
-          <Text style={styles.primaryText}>{primaryLabel}</Text>
-        </Pressable>
-
-        <View style={styles.tools}>
-          <ActionButton icon="compass-outline" label="Compass" onPress={() => router.push('/compass')} />
-          <ActionButton icon="cloud-download-outline" label={tileProgress ?? (tiles ? 'Map saved' : 'Save map')} onPress={onDownloadTiles} />
-          <ActionButton icon="warning-outline" label="Simulate" color={colors.danger} onPress={() => router.push('/simulate')} />
+          <Text style={styles.summary}>{summary}</Text>
         </View>
 
-        {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution && (
-          <Text
-            style={[styles.fine, styles.link]}
-            onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}
-          >
-            {attribution}
+        <BigButton
+          label={goLabel}
+          icon="navigate"
+          loading={routingLoading}
+          disabled={!target}
+          onPress={() => void actions.routeToBestTarget()}
+        />
+        <View style={styles.row}>
+          <BigButton label="Compass" icon="compass-outline" variant="secondary" style={styles.half} onPress={() => router.push('/compass')} />
+          <BigButton
+            label={busyLabel ?? (tiles ? 'Map saved' : 'Save map')}
+            icon={tiles ? 'checkmark-circle-outline' : 'cloud-download-outline'}
+            variant="secondary"
+            style={styles.half}
+            accessibilityHint="Downloads the map around you for use without signal"
+            onPress={onDownloadTiles}
+          />
+        </View>
+        <BigButton label="Practice a disaster" icon="warning-outline" variant="plain" tone="danger" onPress={() => router.push('/simulate')} />
+
+        {(route || USE_TILE_BASEMAP || (!isOnline && tiles)) && (
+          <Text style={styles.fine}>
+            {route ? (route.isStraightLine ? 'Straight-line direction. ' : 'Walking route. ') : ''}
+            {route && !route.isStraightLine && (routeIsCached || !isOnline) ? `Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}. ` : ''}
+            {route ? 'Routes don’t avoid hazards. ' : ''}
+            <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
+            {route ? <>{' · '}<Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text></> : null}
+            {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution ? <>{' · '}<Text style={styles.link} onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}>{attribution}</Text></> : null}
           </Text>
         )}
       </View>
@@ -210,21 +203,20 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.card },
-  top: { position: 'absolute', top: 0, left: 0, right: 0 },
-  notice: { backgroundColor: colors.bg, color: colors.text, fontSize: 15, fontWeight: '600', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: colors.text },
-  demo: { alignSelf: 'flex-start', margin: 12, backgroundColor: colors.bg, color: colors.text, borderWidth: 1, borderColor: colors.text, fontSize: 13, fontWeight: '600', paddingHorizontal: 8, paddingVertical: 3 },
+  fill: { flex: 1, backgroundColor: colors.bg },
+  top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12, gap: 8 },
+  notice: { backgroundColor: colors.card, color: colors.text, fontSize: 15, lineHeight: 20, paddingVertical: 10, paddingHorizontal: 14, borderRadius: radius, overflow: 'hidden' },
+  demo: { alignSelf: 'flex-start', backgroundColor: colors.card, color: colors.muted, fontSize: 13, fontWeight: '600', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, overflow: 'hidden' },
 
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, borderTopWidth: 1, borderColor: colors.text, padding: 20, paddingBottom: 16, gap: 12 },
-  sheetHead: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
-  label: { fontSize: 15, fontWeight: '600', color: colors.muted },
-  targetName: { fontSize: 24, lineHeight: 27, fontWeight: '700', color: colors.text },
-  fine: { fontSize: 12, lineHeight: 16, color: colors.muted },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: 10 },
+  sheetHead: { gap: 2, paddingHorizontal: 4, marginBottom: 4 },
+  targetName: { fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
+  summary: { fontSize: 15, lineHeight: 20, color: colors.muted },
+  row: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
+  fine: { fontSize: 12, lineHeight: 16, color: colors.muted, textAlign: 'center' },
   link: { textDecorationLine: 'underline' },
-  primary: { minHeight: minTarget, backgroundColor: colors.primary, borderRadius: radius, justifyContent: 'center', paddingHorizontal: 16 },
-  primaryText: { color: colors.onPrimary, fontSize: 19, fontWeight: '700' },
-  tools: { flexDirection: 'row', gap: 8 },
 
-  meetingMarker: { width: 22, height: 22, backgroundColor: colors.bg, borderWidth: 2, borderColor: colors.text, transform: [{ rotate: '45deg' }] },
-  safeMarker: { width: 14, height: 14, backgroundColor: colors.safe, borderWidth: 1, borderColor: colors.bg },
+  meetingMarker: { width: 22, height: 22, borderRadius: 4, backgroundColor: colors.bg, borderWidth: 3, borderColor: colors.text, transform: [{ rotate: '45deg' }] },
+  safeMarker: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.safe, borderWidth: 2, borderColor: colors.bg },
 });

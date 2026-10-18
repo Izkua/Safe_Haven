@@ -2,9 +2,11 @@
 // Design: urgency ladder — watch (amber band) · warning (red header) · emergency (full red takeover).
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, type ComponentProps } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_STEPS, pickSafeTarget } from '@/lib/hazards';
@@ -57,10 +59,8 @@ export default function AlertScreen() {
   if (!a) {
     return (
       <View style={[styles.calm, { paddingTop: insets.top + 24 }]}>
-        <Text style={styles.calmTitle}>No active alerts.</Text>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} style={[styles.btn, styles.btnInk]}>
-          <Text style={[styles.btnText, { color: colors.onPrimary }]}>Back to map</Text>
-        </Pressable>
+        <Text style={styles.calmTitle}>No active alerts</Text>
+        <BigButton label="Back to map" icon="map-outline" onPress={() => router.back()} />
       </View>
     );
   }
@@ -83,8 +83,15 @@ export default function AlertScreen() {
   const when = formatAge(Math.max(0, Date.now() - a.issuedAt));
   const source = a.source === 'nws' ? 'National Weather Service' : a.source === 'usgs' ? 'USGS' : 'Simulated';
 
+  // Secondary buttons: a soft tint of the foreground on red, the tonal surface elsewhere.
+  const tonal = emergency ? 'rgba(255,244,239,0.18)' : colors.card;
+  const onHeader = onRed ? colors.onDanger : colors.onWarn;
+  const levelName = emergency ? 'Emergency' : level === 'warning' ? 'Warning' : 'Watch';
+
   return (
     <View style={[styles.screen, { backgroundColor: emergency ? colors.danger : colors.bg }]}>
+      {/* Status bar sits on the header color: light over red, dark over amber, in either appearance. */}
+      <StatusBar style={onRed ? 'light' : 'dark'} />
       {/* Header: amber band (watch), red block (warning), or part of the full-red page (emergency). */}
       <View
         style={[
@@ -94,74 +101,71 @@ export default function AlertScreen() {
           level === 'warning' && { backgroundColor: colors.danger },
         ]}
       >
-        <View style={styles.kickerRow}>
-          {info && <Ionicons name={info.icon} size={22} color={onRed ? colors.onDanger : colors.text} />}
-          <Text style={[styles.kicker, { color: onRed ? colors.onDanger : colors.text }]}>
-            {emergency ? 'Emergency' : level === 'warning' ? 'Warning' : 'Watch'}
-            {info ? ` · ${info.label}` : ''} · {when}
-          </Text>
-        </View>
-        <Text accessibilityRole="header" style={[emergency ? styles.headlineXL : styles.headline, { color: onRed ? colors.onDanger : colors.text }]}>
+        <Text accessibilityRole="header" style={[emergency ? styles.headlineXL : styles.headline, { color: onHeader }]}>
           {headline(a)}
         </Text>
+        <View style={styles.metaRow}>
+          {info && <Ionicons name={info.icon} size={20} color={onHeader} />}
+          <Text style={[styles.meta, { color: onHeader }]}>
+            {info ? `${info.label} · ` : ''}{levelName} · {when}
+          </Text>
+        </View>
       </View>
 
       <ScrollView style={styles.flex} contentContainerStyle={styles.body}>
         <Text style={[styles.desc, { color: fg }]}>{a.description}</Text>
 
-        <Text style={[styles.area, { color: affected ? (emergency ? colors.onDanger : colors.danger) : colors.safe }]}>
-          {affected ? 'You are in the affected area' : 'You are outside the affected area'}
-        </Text>
-
-        <View style={[styles.stepsBlock, { borderColor: fg }]}>
-          <Text style={[styles.section, { color: fg }]}>{affected ? 'What to do now' : 'Stay ready'}</Text>
-          {steps.map((s, i) => (
-            <View key={i} style={styles.step}>
-              <Text style={[styles.stepNum, { color: fg }]}>{i + 1}</Text>
-              <Text style={[styles.stepText, { color: fg }]}>{s}</Text>
-            </View>
-          ))}
+        <View style={styles.areaRow}>
+          <Ionicons
+            name={affected ? 'alert-circle' : 'checkmark-circle'}
+            size={22}
+            color={affected ? (emergency ? colors.onDanger : colors.dangerText) : colors.safe}
+          />
+          <Text style={[styles.area, { color: affected ? (emergency ? colors.onDanger : colors.dangerText) : colors.safe }]}>
+            {affected ? 'You are in the affected area' : 'You are outside the affected area'}
+          </Text>
         </View>
 
+        <Text style={[styles.section, { color: fg }]}>{affected ? 'What to do now' : 'Stay ready'}</Text>
+        {steps.map((s, i) => (
+          <View key={i} style={styles.step}>
+            <Text style={[styles.stepNum, { color: fg }]}>{i + 1}.</Text>
+            <Text style={[styles.stepText, { color: fg }]}>{s}</Text>
+          </View>
+        ))}
+
         {affected && info && <Text style={[styles.moveNote, { color: fg }]}>{info.moveNote}</Text>}
-        <Text style={[styles.fine, { color: soft }]}>{OFFICIAL_NOTE}</Text>
-        <Text style={[styles.fine, { color: soft }]}>Source: {source}</Text>
+        <Text style={[styles.fine, { color: soft }]}>{OFFICIAL_NOTE} Source: {source}.</Text>
       </ScrollView>
 
-      <View style={[styles.actions, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
         {affected && best && (
-          <Pressable
-            accessibilityRole="button"
+          <AlertButton
+            label={`Go to ${best.name}${dist(best)}`}
+            icon="navigate"
+            bg={emergency ? colors.onDanger : colors.primary}
+            fg={emergency ? colors.danger : colors.onPrimary}
+            tall
             onPress={() => go(best)}
-            style={({ pressed }) => [styles.btn, styles.btnTall, emergency ? styles.btnWhite : styles.btnInk, pressed && styles.pressed]}
-          >
-            <Text style={[styles.btnText, styles.btnTextBig, { color: emergency ? colors.danger : colors.onPrimary }]}>
-              Safest nearby · {best.name}{dist(best)}
-            </Text>
-          </Pressable>
+          />
         )}
         {meeting && meeting.id !== best?.id && (
-          <Pressable
-            accessibilityRole="button"
+          <AlertButton
+            label={`Go to meeting point · ${meeting.name}${dist(meeting)}`}
+            icon="flag"
+            bg={affected && best ? tonal : emergency ? colors.onDanger : colors.primary}
+            fg={affected && best ? fg : emergency ? colors.danger : colors.onPrimary}
+            tall={!(affected && best)}
             onPress={() => go(meeting)}
-            style={({ pressed }) => [
-              styles.btn,
-              affected && best ? [styles.btnOutline, { borderColor: fg }] : [styles.btnTall, emergency ? styles.btnWhite : styles.btnInk],
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.btnText, { color: affected && best ? fg : emergency ? colors.danger : colors.onPrimary }]}>
-              Go to meeting place · {meeting.name}{dist(meeting)}
-            </Text>
-          </Pressable>
+          />
         )}
-        <Pressable
-          accessibilityRole="button"
+        <AlertButton
+          label={state.myStatus === 'safe' ? 'Marked as safe' : 'I’m safe'}
+          icon={state.myStatus === 'safe' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+          bg={tonal}
+          fg={fg}
           onPress={safe}
-          style={({ pressed }) => [styles.btn, styles.btnOutline, { borderColor: fg }, state.myStatus === 'safe' && { backgroundColor: emergency ? 'rgba(255,255,255,0.18)' : colors.card }, pressed && styles.pressed]}
-        >
-          <Text style={[styles.btnText, { color: fg }]}>{state.myStatus === 'safe' ? 'Marked safe ✓' : "I'm safe"}</Text>
-        </Pressable>
+        />
         {emergency ? (
           <Pressable
             accessibilityRole="button"
@@ -182,35 +186,44 @@ export default function AlertScreen() {
   );
 }
 
+function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={p.label}
+      onPress={p.onPress}
+      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
+    >
+      <Ionicons name={p.icon} size={22} color={p.fg} />
+      <Text style={[styles.btnText, { color: p.fg }]} numberOfLines={2}>{p.label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
-  header: { paddingHorizontal: 24, paddingBottom: 20, gap: 12 },
-  kickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  kicker: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
-  headline: { fontSize: 32, lineHeight: 35, fontWeight: '700' },
-  headlineXL: { fontSize: 60, lineHeight: 63, fontWeight: '700' },
-  body: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 8, gap: 14 },
-  desc: { fontSize: 19, lineHeight: 27, fontWeight: '500' },
-  area: { fontSize: 17, fontWeight: '700' },
-  stepsBlock: { borderTopWidth: 1, paddingTop: 12, gap: 12 },
-  section: { fontSize: 22, fontWeight: '700' },
-  step: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
-  stepNum: { width: 26, fontSize: 22, lineHeight: 26, fontWeight: '700' },
-  stepText: { flex: 1, fontSize: 18, lineHeight: 26 },
-  moveNote: { fontSize: 18, lineHeight: 26, fontWeight: '700' },
-  fine: { fontSize: 14, fontWeight: '600' },
-  actions: { paddingHorizontal: 24, paddingTop: 12, gap: 10 },
-  btn: { minHeight: minTarget, borderRadius: radius, justifyContent: 'center', paddingHorizontal: 18 },
-  btnTall: { minHeight: 72 },
-  btnInk: { backgroundColor: colors.primary },
-  btnWhite: { backgroundColor: colors.onDanger },
-  btnOutline: { borderWidth: 2, backgroundColor: 'transparent' },
-  btnText: { fontSize: 19, fontWeight: '700' },
-  btnTextBig: { fontSize: 21 },
-  pressed: { opacity: 0.75 },
+  header: { paddingHorizontal: 20, paddingBottom: 18, gap: 8 },
+  headline: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
+  headlineXL: { fontSize: 44, lineHeight: 50, fontWeight: '700' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  meta: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 },
+  desc: { fontSize: 17, lineHeight: 24 },
+  areaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  area: { flex: 1, fontSize: 17, fontWeight: '600' },
+  section: { marginTop: 8, fontSize: 20, lineHeight: 25, fontWeight: '600' },
+  step: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  stepNum: { width: 24, fontSize: 17, lineHeight: 24, fontWeight: '600' },
+  stepText: { flex: 1, fontSize: 17, lineHeight: 24 },
+  moveNote: { fontSize: 17, lineHeight: 24, fontWeight: '600' },
+  fine: { marginTop: 4, fontSize: 13, lineHeight: 18 },
+  actions: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
+  btn: { minHeight: minTarget, borderRadius: radius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  btnTall: { minHeight: 64 },
+  btnText: { fontSize: 17, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
   dismiss: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   dismissText: { fontSize: 16, fontWeight: '600', textDecorationLine: 'underline' },
-  calm: { flex: 1, backgroundColor: colors.bg, padding: 24, gap: 24 },
-  calmTitle: { fontSize: 32, fontWeight: '700', color: colors.text },
+  calm: { flex: 1, backgroundColor: colors.bg, padding: 20, gap: 20 },
+  calmTitle: { fontSize: 28, fontWeight: '700', color: colors.text },
 });

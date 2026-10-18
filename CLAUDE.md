@@ -20,6 +20,7 @@ Before merging: `npm run typecheck`, `npm test`, and open the app in Expo Go. Th
 
 ## Architecture
 
+- **Entry:** `index.tsx` (package.json `main`) loads the saved appearance (Dark default / Light / Match phone, `src/lib/appearance.ts`) *before* lazily requiring expo-router's app, so `src/theme.ts` resolves colors from it. Don't import `@/theme` from `index.tsx` or `appearance.ts`. On Android, changing appearance needs an app restart.
 - **Routing:** Expo Router (file-based). `app/_layout.tsx` wraps everything in `<AppProvider>` and a Stack; `app/(tabs)/` holds the Map (`index`), Group and Info (first aid) tabs; `alert.tsx` is a modal and `compass.tsx` a pushed screen.
 - **State:** `src/state/AppContext.tsx` is the single store and the *only* place services are wired together. Screens call `useApp()` → `{ state, actions }` and never call services directly. It handles, in order: hydrate from the offline snapshot → connectivity → foreground location watch with throttled publish → live Firestore group/member subscriptions → alert polling while online → persist snapshot on change.
 - **Offline-first:** `src/services/offline.ts` saves an `OfflineSnapshot` (group, members, route, tiles, name, uid) to AsyncStorage so a relaunch with zero network still shows the last-known world. Services must **never throw into the UI when offline**: catch and return a fallback (empty list, `straightLineRoute()`, `null`).

@@ -1,22 +1,14 @@
-// [OWNER: UI] Bottom tabs. Design: text-only tabs on bone, ink rule on top, active tab underlined.
+// [OWNER: UI] Bottom tabs: standard iOS icon + label, so anyone recognizes them.
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import type { ComponentProps } from 'react';
+import { StyleSheet } from 'react-native';
 import { colors } from '@/theme';
 
-const label = (text: string) =>
-  function TabLabel({ focused }: { focused: boolean }) {
-    return (
-      <Text
-        style={{
-          fontSize: 15,
-          fontWeight: focused ? '700' : '600',
-          color: focused ? colors.text : colors.muted,
-          textDecorationLine: focused ? 'underline' : 'none',
-        }}
-      >
-        {text}
-      </Text>
-    );
+type IconName = ComponentProps<typeof Ionicons>['name'];
+const icon = (on: IconName, off: IconName) =>
+  function TabIcon({ focused, size }: { focused: boolean; size: number }) {
+    return <Ionicons name={focused ? on : off} size={size} color={focused ? (colors.text as string) : (colors.muted as string)} />;
   };
 
 export default function TabsLayout() {
@@ -24,17 +16,15 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarIcon: () => null,
-        tabBarIconStyle: { display: 'none' },
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.text, borderTopWidth: 1, elevation: 0, shadowOpacity: 0 },
-        tabBarItemStyle: { justifyContent: 'center' },
+        tabBarActiveTintColor: colors.text as string,
+        tabBarInactiveTintColor: colors.muted as string,
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.rule, borderTopWidth: StyleSheet.hairlineWidth, elevation: 0, shadowOpacity: 0 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Map', tabBarLabel: label('Map') }} />
-      <Tabs.Screen name="group" options={{ title: 'Group', tabBarLabel: label('Group') }} />
-      <Tabs.Screen name="info" options={{ title: 'First aid', tabBarLabel: label('First aid') }} />
+      <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: icon('map', 'map-outline') }} />
+      <Tabs.Screen name="group" options={{ title: 'Group', tabBarIcon: icon('people', 'people-outline') }} />
+      <Tabs.Screen name="info" options={{ title: 'First aid', tabBarIcon: icon('medkit', 'medkit-outline') }} />
     </Tabs>
   );
 }

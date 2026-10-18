@@ -72,7 +72,7 @@ export default function CompassScreen() {
         {arrived ? (
           <Text style={[styles.arrived]}>You have arrived</Text>
         ) : (
-          <BigNumber meters={dist} size={88} />
+          <BigNumber meters={dist} size={56} />
         )}
         {!arrived && <Text style={styles.mins}>About {mins} min</Text>}
       </View>
@@ -82,14 +82,14 @@ export default function CompassScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24 },
-  label: { fontSize: 16, fontWeight: '600', color: colors.muted },
-  name: { marginTop: 6, fontSize: 30, lineHeight: 33, fontWeight: '700', color: colors.text },
+  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
+  label: { fontSize: 15, color: colors.muted },
+  name: { marginTop: 4, fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
   dialWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   dial: { width: DIAL, height: DIAL, borderRadius: DIAL / 2, borderWidth: 1, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   north: { position: 'absolute', top: 10, alignSelf: 'center', fontSize: 16, fontWeight: '700', color: colors.text },
   bottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   mins: { fontSize: 18, fontWeight: '600', color: colors.muted, marginBottom: 8 },
-  arrived: { fontSize: 40, fontWeight: '700', color: colors.safe },
+  arrived: { fontSize: 28, fontWeight: '700', color: colors.safe },
   fine: { marginTop: 12, fontSize: 13, color: colors.muted },
 });

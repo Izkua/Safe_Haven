@@ -1,48 +1,100 @@
-// [OWNER: UI] SafeHaven visual language: "Quiet by default. Red means danger."
-// Bone ground, ink text and actions. Color is earned: red only for danger / need help,
-// amber only for advisories, green for safe and shelters. No shadows, gradients or rounding.
+// [OWNER: UI] SafeHaven visual language: calm surfaces, real buttons, color only when it means something.
+// Light = dark brown on beige; dark (the default) = soft white on grey. Red means danger, amber means
+// watch, green means safe. Everything else is neutral. See DESIGN.md.
+import { Appearance, DynamicColorIOS, Platform, type ColorValue } from 'react-native';
+import { getStartupPref } from '@/lib/appearance';
 import type { AlertSeverity } from '@/types';
 
 export const palette = {
-  bone: '#ECEDE7',
-  boneDeep: '#E3E4DD',
-  ink: '#121412',
-  inkSoft: '#5A5F5A',
-  rule: '#C9CBC3',
-  danger: '#C4161C',
-  watch: '#F2B705',
-  safe: '#1F5E4F',
-  white: '#FFFFFF',
+  // light (beige)
+  sand: '#E8DFCF',
+  sandDeep: '#DCCFB8',
+  bark: '#2A2118',
+  barkSoft: '#5E5141',
+  sandRule: '#CDBFA6',
+  sandInk: '#F4EEE3', // text on dark fills in light mode
+  dangerTextLight: '#962A1B',
+  safeLight: '#255E42',
+  // dark (grey)
+  slate: '#1E2023',
+  slateRaised: '#2D3035',
+  mist: '#ECEDEE',
+  mistSoft: '#A6ABB2',
+  slateRule: '#3A3E44',
+  dangerTextDark: '#FF6B5E',
+  safeDark: '#5CC08B',
+  // signals (same in both)
+  danger: '#B3261E',
+  onDanger: '#FFF4EF',
+  watch: '#E3A21A',
+  safeFill: '#2C6B4B',
 };
+
+// Dark is the default. index.tsx loads the saved preference (Dark / Light / Match phone) and applies
+// it with Appearance.setColorScheme() before this module is evaluated.
+// iOS swaps these live when the appearance changes (no re-render needed). Android has no dynamic
+// colors, so it resolves once here from the startup preference (changing it needs a restart).
+const startup = getStartupPref();
+const launchScheme = startup === 'system' ? Appearance.getColorScheme() : startup;
+function adaptive(light: string, dark: string): ColorValue {
+  if (Platform.OS === 'ios') return DynamicColorIOS({ light, dark });
+  return launchScheme === 'light' ? light : dark;
+}
 
 // Semantic names used across screens.
 export const colors = {
-  bg: palette.bone,
-  card: palette.boneDeep,
-  text: palette.ink,
-  muted: palette.inkSoft,
-  rule: palette.rule,
-  primary: palette.ink, // everyday actions are ink, not blue
-  onPrimary: palette.bone,
-  safe: palette.safe,
-  danger: palette.danger,
-  onDanger: palette.white,
-  warn: palette.watch, // amber is a FILL; put ink text on it, never amber text on bone
-  meeting: palette.ink,
-  shelter: palette.safe,
+  bg: adaptive(palette.sand, palette.slate),
+  /** Tonal surface: secondary buttons, banners, inputs. */
+  card: adaptive(palette.sandDeep, palette.slateRaised),
+  text: adaptive(palette.bark, palette.mist),
+  muted: adaptive(palette.barkSoft, palette.mistSoft),
+  rule: adaptive(palette.sandRule, palette.slateRule),
+  /** Filled primary button. */
+  primary: adaptive(palette.bark, palette.mist),
+  onPrimary: adaptive(palette.sandInk, palette.slate),
+  /** Green TEXT / icons / markers. */
+  safe: adaptive(palette.safeLight, palette.safeDark),
+  /** Green FILL (active "I'm safe"), with onSafe text. */
+  safeFill: palette.safeFill as ColorValue,
+  onSafe: palette.sandInk as ColorValue,
+  /** Red FILL (alert headers, emergency screen, badges, active "Need help"): same in both. */
+  danger: palette.danger as ColorValue,
+  /** Red TEXT / icons / outlines on the page or a tonal surface. */
+  dangerText: adaptive(palette.dangerTextLight, palette.dangerTextDark),
+  onDanger: palette.onDanger as ColorValue,
+  /** Amber is a FILL only; put onWarn text on it. */
+  warn: palette.watch as ColorValue,
+  onWarn: palette.bark as ColorValue,
+  meeting: adaptive(palette.bark, palette.mist),
+  shelter: adaptive(palette.safeLight, palette.safeDark),
 };
 
-export const statusColor = { safe: colors.safe, need_help: colors.danger, unknown: colors.muted } as const;
+/**
+ * Plain-string colors for APIs that can't take dynamic colors (react-native-maps overlay props).
+ * Pass `useColorScheme()` so the screen re-renders when the appearance flips.
+ */
+export function mapOverlayColors(scheme: string | null | undefined) {
+  const dark = scheme !== 'light';
+  return {
+    route: dark ? palette.mist : palette.bark,
+    danger: dark ? palette.dangerTextDark : palette.danger,
+  };
+}
 
-export const radius = 2;
+export const statusColor = { safe: colors.safe, need_help: colors.dangerText, unknown: colors.muted } as const;
+
+/** Corner radius for buttons, banners and inputs. */
+export const radius = 12;
+/** Minimum height of anything tappable. */
 export const minTarget = 56;
 
+/** Two weights, iOS-standard sizes. */
 export const type = {
-  number: { fontSize: 56, lineHeight: 52, fontWeight: '700' as const },
-  h1: { fontSize: 40, lineHeight: 42, fontWeight: '700' as const },
-  heading: { fontSize: 24, lineHeight: 27, fontWeight: '700' as const },
-  body: { fontSize: 18, lineHeight: 26, fontWeight: '400' as const },
-  label: { fontSize: 15, fontWeight: '600' as const },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '700' as const },
+  heading: { fontSize: 20, lineHeight: 25, fontWeight: '600' as const },
+  body: { fontSize: 17, lineHeight: 24, fontWeight: '400' as const },
+  button: { fontSize: 17, fontWeight: '600' as const },
+  label: { fontSize: 15, lineHeight: 20, fontWeight: '400' as const },
 };
 
 /** Urgency ladder: tone escalates with danger. */
@@ -57,7 +109,7 @@ export function urgencyFor(severity: AlertSeverity): Urgency {
 
 // [UI] Distinct member colors for map pins / avatars. Avoids red (need help), purple (meeting)
 // and light blue (shelters) so a member can't be mistaken for a status or a place. All dark
-// enough for a white initial on top.
+// enough for a light initial on top.
 export const memberPalette = ['#00796b', '#e65100', '#c2185b', '#3949ab', '#6d4c41', '#00838f', '#827717', '#546e7a'];
 
 /** Stable color per member: by join order in the group (unique up to 8 members), hash as fallback. */

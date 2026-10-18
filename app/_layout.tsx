@@ -8,7 +8,7 @@ export default function RootLayout() {
   return (
     <AppProvider>
       <OnboardingGate>
-        <StatusBar style="dark" />
+        <StatusBar style="auto" />
         <RootStack />
       </OnboardingGate>
     </AppProvider>
@@ -24,7 +24,7 @@ function RootStack() {
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.text,
         headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontWeight: '600' },
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
@@ -36,7 +36,7 @@ function RootStack() {
         {/* [UI] Alert is a full-screen takeover (no header, no swipe-away); dismiss is inside the screen. */}
         <Stack.Screen name="alert" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
-        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Simulate a disaster' }} />
+        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Practice a disaster' }} />
       </Stack.Protected>
     </Stack>
   );
