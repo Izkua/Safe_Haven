@@ -320,9 +320,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               else set({ route: null });
             }
           }
-          // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
+          // [ALERTS] A drill someone else started: show it here too, once, while it's still recent,
+          // and only if it started after this phone joined the group (no old drills on joining).
           const d = group.drill;
-          if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
+          const joinedAt = groupJoinedAt.current[group.id] ?? 0;
+          if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS && d.at >= joinedAt) {
             seenDrills.current.add(d.id);
             const alert = drillAlert(d);
             set({ activeAlert: alert });
@@ -558,6 +560,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const g = await fb.joinGroup(uid, code.trim().toUpperCase()).catch(() => null);
         // Fresh join time even if you were in this group before, so its past announcements stay hidden.
         if (g) markJoined(g.id);
+        // [ALERTS] A drill that was already running before you joined isn't shown to you.
+        if (g?.drill) seenDrills.current.add(g.drill.id);
         if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
