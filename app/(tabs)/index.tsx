@@ -5,13 +5,14 @@ import { Alert, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
+import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { formatAge, formatDistance } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
 import { makeSimulatedAlert } from '@/services/alerts';
 import { downloadRegion, estimateTileCount, ONLINE_TILE_URL, TILE_ATTRIBUTION, TILE_PATH_TEMPLATE } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
-import { colors, statusColor } from '@/theme';
+import { colors, memberColor } from '@/theme';
 
 const STALE_MS = 15 * 60_000;
 // Android's Google base map often renders blank in Expo Go (Play services / API key issues).
@@ -77,15 +78,20 @@ export default function MapScreen() {
         {members.map((m) => {
           if (!m.location) return null;
           const age = m.locationTs ? Date.now() - m.locationTs : Infinity;
+          const color = memberColor(m.uid, group?.memberIds ?? []);
           return (
             <Marker
-              key={m.uid}
+              // Custom marker views aren't reliably redrawn in place: re-key on what the pin shows so a
+              // status/name/color change remounts it immediately.
+              key={`${m.uid}-${m.status}-${m.name}-${color}`}
               coordinate={m.location}
               title={m.name}
               description={`${m.status.replace('_', ' ')} · ${m.locationTs ? formatAge(age) : 'unknown'}`}
-              pinColor={statusColor[m.status]}
+              anchor={{ x: 0.5, y: 0.5 }}
               opacity={age > STALE_MS ? 0.45 : 1}
-            />
+            >
+              <MemberPin name={m.name} color={color} status={m.status} />
+            </Marker>
           );
         })}
       </MapView>
