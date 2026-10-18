@@ -4,16 +4,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState, type ComponentProps } from 'react';
-import { AppState, KeyboardAvoidingView, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, KeyboardAvoidingView, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Avatar } from '@/components/Avatar';
 import { BigButton } from '@/components/BigButton';
 import { useOnboarding } from '@/components/OnboardingGate';
 import { loadAppearancePref, setAppearancePref, type AppearancePref } from '@/lib/appearance';
+import { pickAvatar, type AvatarSource } from '@/lib/avatar';
 import { tap } from '@/lib/haptics';
 import { OFFICIAL_NOTE } from '@/lib/hazards';
 import { hasNotificationPermission, notificationsAvailable, requestNotificationPermission } from '@/services/alerts';
 import { hasForegroundPermission, requestForegroundPermission } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors, minTarget, radius } from '@/theme';
+import { colors, memberColor, minTarget, radius } from '@/theme';
 
 const APPEARANCE: { value: AppearancePref; label: string }[] = [
   { value: 'dark', label: 'Dark' },
@@ -35,6 +37,9 @@ export default function SettingsScreen() {
   const { resetOnboarding } = useOnboarding();
   const [name, setName] = useState(state.myName === 'Me' ? '' : state.myName);
   const [savedName, setSavedName] = useState(false);
+  const [phone, setPhone] = useState(state.myPhone ?? '');
+  const [savedPhone, setSavedPhone] = useState(false);
+  const [picking, setPicking] = useState<AvatarSource | null>(null);
   const [pref, setPref] = useState<AppearancePref | null>(null);
   const [perms, setPerms] = useState<Perms>(null);
 
@@ -64,6 +69,35 @@ export default function SettingsScreen() {
     setTimeout(() => setSavedName(false), 2000);
   };
 
+  const phoneChanged = phone.trim() !== (state.myPhone ?? '');
+  const savePhone = () => {
+    if (!phoneChanged) return;
+    tap();
+    actions.setPhone(phone);
+    setSavedPhone(true);
+    setTimeout(() => setSavedPhone(false), 2000);
+  };
+
+  const changePhoto = async (source: AvatarSource) => {
+    tap();
+    setPicking(source);
+    const res = await pickAvatar(source);
+    setPicking(null);
+    if (!res) return; // cancelled
+    if ('photo' in res) return actions.setPhoto(res.photo);
+    if (res.error === 'denied') {
+      const what = source === 'camera' ? 'camera' : 'photos';
+      Alert.alert(`${source === 'camera' ? 'Camera' : 'Photo'} access is off`, `Allow SafeHaven to use your ${what} in Settings to set a profile picture.`, [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+      ]);
+    } else Alert.alert('Couldn’t use that photo', 'Try a different one.');
+  };
+  const removePhoto = () => {
+    tap();
+    actions.setPhoto(null);
+  };
+
   // Ask first (only works if the user was never asked); if that doesn't turn it on, open iOS Settings.
   const turnOn = async (request: () => Promise<boolean>) => {
     tap();
@@ -84,6 +118,15 @@ export default function SettingsScreen() {
     <KeyboardAvoidingView style={styles.screen} behavior="padding">
       <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
         <Text style={styles.heading} accessibilityRole="header">You</Text>
+        <View style={styles.photoRow}>
+          <Avatar name={state.myName === 'Me' ? '?' : state.myName} photo={state.myPhoto} color={memberColor(state.myUid ?? 'me', [])} size={88} />
+          <View style={styles.photoBtns}>
+            <BigButton label={state.myPhoto ? 'Take new photo' : 'Take photo'} icon="camera-outline" variant="secondary" loading={picking === 'camera'} disabled={!!picking} onPress={() => void changePhoto('camera')} />
+            <BigButton label="Choose from library" icon="images-outline" variant="secondary" loading={picking === 'library'} disabled={!!picking} onPress={() => void changePhoto('library')} />
+            {!!state.myPhoto && <BigButton label="Remove photo" variant="plain" onPress={removePhoto} />}
+          </View>
+        </View>
+        <Text style={[styles.hint, styles.gapBottom]}>Your group sees your photo in the group list and on the map.</Text>
         <Text style={styles.fieldLabel}>Your name</Text>
         <TextInput
           style={styles.input}
@@ -104,6 +147,30 @@ export default function SettingsScreen() {
           disabled={!nameChanged && !savedName}
           style={styles.gapTop}
           onPress={saveName}
+        />
+
+        <Text style={[styles.fieldLabel, styles.gapTopLg]}>Phone number (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={phone}
+          onChangeText={(t) => { setPhone(t); setSavedPhone(false); }}
+          placeholder="e.g. (206) 555-0123"
+          placeholderTextColor={colors.muted}
+          keyboardType="phone-pad"
+          textContentType="telephoneNumber"
+          autoComplete="tel"
+          returnKeyType="done"
+          onSubmitEditing={savePhone}
+          accessibilityLabel="Phone number"
+        />
+        <Text style={styles.hint}>Only people in your groups see it, so they can call or text you. Leave it empty to keep it private.</Text>
+        <BigButton
+          label={savedPhone ? 'Saved' : phone.trim() || !state.myPhone ? 'Save number' : 'Remove number'}
+          icon={savedPhone ? 'checkmark' : undefined}
+          variant={savedPhone ? 'secondary' : 'primary'}
+          disabled={!phoneChanged && !savedPhone}
+          style={styles.gapTop}
+          onPress={savePhone}
         />
 
         <Text style={styles.heading} accessibilityRole="header">Permissions</Text>
@@ -226,6 +293,10 @@ const styles = StyleSheet.create({
   body: { fontSize: 15, lineHeight: 21, color: colors.muted },
   center: { textAlign: 'center', marginTop: 16 },
   gapTop: { marginTop: 12 },
+  gapTopLg: { marginTop: 20 },
+  gapBottom: { marginBottom: 16 },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  photoBtns: { flex: 1, gap: 6 },
   card: { backgroundColor: colors.card, borderRadius: radius, paddingHorizontal: 14 },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.rule },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },

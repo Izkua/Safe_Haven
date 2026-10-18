@@ -391,14 +391,14 @@ export default function MapScreen() {
             <Marker
               // Custom marker views aren't reliably redrawn in place: re-key on what the pin shows so a
               // status/name/color change remounts it immediately.
-              key={`${m.uid}-${m.status}-${m.name}-${color}`}
+              key={`${m.uid}-${m.status}-${m.name}-${color}-${m.photo?.length ?? 0}`}
               coordinate={m.location}
               title={help ? `${m.name} needs help` : m.name}
               description={`${help ? 'Needs help' : m.status === 'safe' ? 'Safe' : 'No check-in'}, ${m.locationTs ? formatAge(age) : 'location unknown'}`}
               anchor={{ x: 0.5, y: 0.5 }}
               opacity={age > STALE_MS && !help ? 0.45 : 1}
             >
-              <MemberPin name={m.name} color={color} status={m.status} />
+              <MemberPin name={m.name} color={color} status={m.status} photo={m.photo} />
             </Marker>
           );
         })}

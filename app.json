@@ -34,7 +34,15 @@
         }
       ],
       "expo-notifications",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SafeHaven uses a photo you pick as your profile picture, so your group can recognize you.",
+          "cameraPermission": "SafeHaven uses the camera only when you take a profile picture.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "extra": {
       "router": {},

@@ -12,6 +12,10 @@ export interface Member {
   /** ms epoch of `location`; used to grey out stale pins offline */
   locationTs: number | null;
   status: MemberStatus;
+  /** Profile picture as a small JPEG data URI (resized to 256 px before upload), if they set one. */
+  photo?: string | null;
+  /** Phone number they chose to share with their groups, if any. */
+  phone?: string | null;
 }
 
 export type PlaceType = 'meeting' | 'shelter' | 'hospital' | 'open_area' | 'custom';
@@ -105,6 +109,8 @@ export interface OfflineSnapshot {
   version: 1;
   myUid: string | null;
   myName: string;
+  myPhoto?: string | null;
+  myPhone?: string | null;
   /** The current group (kept for snapshots saved before multi-group support). */
   group: Group | null;
   groups?: Group[];

@@ -154,12 +154,22 @@ function toMember(uid: string, d: DocumentData): Member {
     locationTs: typeof d.locationTs === 'number' ? d.locationTs : null,
     // [UI] No status saved yet counts as safe (the app's default); only "Need help" is ever set otherwise.
     status: d.status === 'need_help' ? 'need_help' : 'safe',
+    // Only accept a small image data URI (see lib/avatar.ts); anything else is ignored.
+    photo: typeof d.photo === 'string' && d.photo.startsWith('data:image/') && d.photo.length < 400_000 ? d.photo : null,
+    phone: typeof d.phone === 'string' && d.phone.trim() ? d.phone.trim().slice(0, 32) : null,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Profile / groups
 // ---------------------------------------------------------------------------
+
+/** users/{uid} { photo, phone }: null clears a field. Fire-and-forget like the other profile writes. */
+export async function saveProfileExtras(uid: string, fields: { photo?: string | null; phone?: string | null }): Promise<void> {
+  const firestore = getDb();
+  if (!firestore) return;
+  fire('saveProfileExtras', setDoc(doc(firestore, 'users', uid), fields, { merge: true }));
+}
 
 /** users/{uid} { name } (merge, so it works whether or not the doc exists yet). */
 export async function saveProfile(uid: string, name: string): Promise<void> {
