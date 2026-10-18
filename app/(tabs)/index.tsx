@@ -15,6 +15,7 @@ import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { takeMapFocus } from '@/lib/mapFocus';
 import { UW_CENTER } from '@/mocks/demo';
+import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress } from '@/services/location';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, groupColor, mapOverlayColors, memberColor, radius } from '@/theme';
@@ -26,7 +27,7 @@ const WALK_MPS = 1.3;
 export default function MapScreen() {
   const { state, actions } = useApp();
   const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
-  const { group, groups, visibleGroupIds, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { myUid, group, groups, visibleGroupIds, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const needHelp = members.filter((m) => m.status === 'need_help');
   const mapRef = useRef<MapView>(null);
   // A place tapped on the map (safe area, or a meeting point we're not routed to) but not confirmed yet.
@@ -165,6 +166,9 @@ export default function MapScreen() {
   const meters = route ? route.distanceM : target && myLocation ? distanceM(myLocation, target.coord) : null;
   const minutes = route && !route.isStraightLine ? route.durationS / 60 : meters !== null ? meters / WALK_MPS / 60 : null;
   const walk = minutes !== null ? `${Math.max(1, Math.round(minutes))} min walk` : null;
+  // [UI] "Set by Sam, 5 min ago" when the panel is showing the meeting point.
+  const setByLine =
+    meetingPlace && (target?.label === 'Meeting point' || route?.targetId === meetingPlace.id) ? meetingSetBy(meetingPlace, myUid) : null;
 
   // The route already on screen goes to the current target, so the main button has nothing to do
   // (it stays greyed) until a new place is picked. A failed walking route can still be retried.
@@ -173,6 +177,8 @@ export default function MapScreen() {
     !!route && !!meetingPlace && route.targetId === meetingPlace.id &&
     (route.to.latitude !== meetingPlace.coord.latitude || route.to.longitude !== meetingPlace.coord.longitude);
   const routeShown = !!route && !routingLoading && !meetingMoved;
+  // Identity of the drawn route (see the Polylines below).
+  const routeKey = route ? `${route.to.latitude},${route.to.longitude}:${route.fetchedAt}:${route.points.length}` : '';
   const canRetry = routeShown && route!.isStraightLine && isOnline;
   const goDisabled = !target || (routeShown && !canRetry);
   const goLabel = routingLoading
@@ -268,10 +274,12 @@ export default function MapScreen() {
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
 
-        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border. */}
+        {/* Route: Apple Maps style, a thick bright blue line with a thin darker border.
+            Re-keyed on the route itself: Apple Maps doesn't reliably redraw a line whose points
+            change in place, so a moved meeting point kept showing the old line. */}
         {route && (
           <Polyline
-            key={`casing-${overlay.routeCasing}`}
+            key={`casing-${overlay.routeCasing}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.routeCasing}
             strokeWidth={10}
@@ -283,7 +291,7 @@ export default function MapScreen() {
         )}
         {route && (
           <Polyline
-            key={`route-${overlay.route}`}
+            key={`route-${overlay.route}-${routeKey}`}
             coordinates={route.points}
             strokeColor={overlay.route}
             strokeWidth={7}
@@ -429,6 +437,7 @@ export default function MapScreen() {
                 {pending ? pendingTitle : target ? target.name : 'No meeting point yet'}
               </Text>
               <Text style={styles.summary} numberOfLines={2}>{pending ? pendingSummary : summary}</Text>
+              {!pending && setByLine && <Text style={styles.setBy} numberOfLines={1}>{setByLine}</Text>}
             </View>
           </Pressable>
         </View>
@@ -510,6 +519,7 @@ const styles = StyleSheet.create({
   sheetHead: { gap: 2, paddingHorizontal: 4, marginBottom: 4 },
   targetName: { fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   summary: { fontSize: 15, lineHeight: 20, color: colors.muted },
+  setBy: { fontSize: 13, lineHeight: 18, color: colors.muted },
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   fine: { fontSize: 12, lineHeight: 16, color: colors.muted, paddingHorizontal: 4 },

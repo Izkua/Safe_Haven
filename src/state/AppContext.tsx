@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
+import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
 import { DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
@@ -19,6 +20,11 @@ export const DEMO_MODE = !fb.isFirebaseConfigured;
 
 /** A shared drill older than this is ignored (e.g. reopening the app hours later). */
 const DRILL_FRESH_MS = 15 * 60_000;
+
+/** [UI] Identity of a meeting point, to spot when someone changes or removes it. */
+function meetingKey(p: Place | null | undefined): string {
+  return p ? `${p.coord.latitude},${p.coord.longitude},${p.name},${p.setAt ?? ''}` : 'none';
+}
 
 /** The alert a group drill shows: same steps as the real thing, clearly marked as practice. */
 function drillAlert(d: GroupDrill, mine = false): HazardAlert {
@@ -166,6 +172,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginRouteRequest = useRef(createRouteRequestGuard()).current;
   const lastPublished = useRef<{ coord: LatLng; ts: number } | null>(null);
   const seenDrills = useRef(new Set<string>());
+  // [UI] Last meeting point seen per group. The first snapshot of a group only records it (no
+  // notification on launch); later changes by someone else notify.
+  const seenMeetings = useRef(new Map<string, string>());
+  // Lets the group listener (set up before `actions`) re-route when the meeting point moves.
+  const actionsRef = useRef<AppActions | null>(null);
 
   // 1. Hydrate from disk first so offline launch shows the last-known world.
   useEffect(() => {
@@ -264,6 +275,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (group) => {
           dispatch({ type: 'upsertGroup', group });
           set({ lastSyncedAt: Date.now() });
+          // [UI] Someone else moved or removed this group's meeting point: tell me.
+          const mp = group.meetingPlace;
+          const key = meetingKey(mp);
+          const prev = seenMeetings.current.get(group.id);
+          seenMeetings.current.set(group.id, key);
+          if (prev !== undefined && prev !== key && mp?.setBy !== stateRef.current.myUid) {
+            if (mp) {
+              // Say where it is now: the typed address, else the nearest one (coordinates if lookup fails).
+              const place = mp;
+              void (async () => {
+                const where = place.address ?? (await loc.reverseGeocode(place.coord));
+                const { title, body } = meetingMovedNotice(group.name, place, where);
+                await alerts.notify(title, body);
+              })();
+            } else {
+              alerts.notify(`${group.name}: meeting point removed`, 'Your group no longer has a meeting point. Check the Group tab.');
+            }
+            // If I'm walking to this group's meeting point, follow it: re-route to the new spot, or
+            // drop the line when it was removed. (Offline, routeTo falls back to a straight line.)
+            const { activeGroupId, route } = stateRef.current;
+            if (group.id === activeGroupId && route?.targetId === 'meet') {
+              if (mp) actionsRef.current?.routeTo(mp).catch(() => {});
+              else set({ route: null });
+            }
+          }
           // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
           const d = group.drill;
           if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
@@ -361,9 +397,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         // Firestore rejects `undefined` fields, so only include address when there is one.
-        const place: Place = { id: 'meet', name, coord, type: 'meeting', ...(address ? { address } : {}) };
+        const { myUid, myName } = s();
+        const place: Place = {
+          id: 'meet', name, coord, type: 'meeting', ...(address ? { address } : {}),
+          // [UI] Who set it and when, so the group can see (and gets notified of) every change.
+          ...(myUid ? { setBy: myUid } : {}), setByName: myName, setAt: Date.now(),
+        };
         const current = s().group;
         const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) seenMeetings.current.set(g.id, meetingKey(place)); // our own change: don't notify ourselves
         if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: place } });
         else set({ personalMeetingPlace: place });
         // Not awaited + caught: hangs offline, and a denied write must not be an unhandled rejection.
@@ -378,6 +420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         const current = s().group;
         const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) seenMeetings.current.set(g.id, meetingKey(null)); // our own change: don't notify ourselves
         if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: null } });
         else set({ personalMeetingPlace: null });
         if (g) fb.setMeetingPlace(g.id, null).catch((e) => console.warn('clearMeetingPlace', e?.message));
@@ -482,6 +525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [set, beginRouteRequest]);
 
+  actionsRef.current = actions;
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
 }
 
