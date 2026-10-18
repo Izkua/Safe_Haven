@@ -21,6 +21,8 @@ export interface Place {
   name: string;
   coord: LatLng;
   type: PlaceType;
+  /** Street address, when the place was set by typing one in. */
+  address?: string;
 }
 
 export interface Group {

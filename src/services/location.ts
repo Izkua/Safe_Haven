@@ -41,3 +41,23 @@ export function shouldPublish(
 //   2. Location.requestBackgroundPermissionsAsync()
 //   3. Location.startLocationUpdatesAsync(BG_TASK, { accuracy: Balanced, deferredUpdatesDistance: 100,
 //        pausesUpdatesAutomatically: true, showsBackgroundLocationIndicator: true })
+
+/**
+ * Address → coordinates with the phone's built-in geocoder (Apple / Google, no API key).
+ * Null if nothing matched, no signal, or it took too long.
+ */
+export async function geocodeAddress(address: string, timeoutMs = 10_000): Promise<LatLng | null> {
+  const q = address.trim();
+  if (!q) return null;
+  try {
+    const results = await Promise.race([
+      Location.geocodeAsync(q),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('geocode timed out')), timeoutMs)),
+    ]);
+    const first = results[0];
+    return first ? { latitude: first.latitude, longitude: first.longitude } : null;
+  } catch (e) {
+    console.warn('geocodeAddress failed:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}

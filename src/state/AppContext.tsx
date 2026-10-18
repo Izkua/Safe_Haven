@@ -110,7 +110,11 @@ function reducer(s: AppState, a: Action): AppState {
 }
 
 export interface AppActions {
-  setMeetingPlace(coord: LatLng, name?: string): Promise<void>;
+  /**
+   * Sets the meeting place for `groupId` (default: the current group; personal if not in a group).
+   * Each group keeps its own meeting place.
+   */
+  setMeetingPlace(coord: LatLng, name?: string, groupId?: string, address?: string): Promise<void>;
   addSafeArea(coord: LatLng, name: string): Promise<void>;
   routeTo(target: Place): Promise<void>;
   routeToBestTarget(): Promise<void>;
@@ -314,18 +318,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
     return {
-      async setMeetingPlace(coord, name = 'Meeting place') {
+      async setMeetingPlace(coord, name = 'Meeting place', groupId, address) {
         if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
           Alert.alert('Meeting place locked offline', 'Reconnect to the internet to change the meeting place. Your saved location has not changed.');
           return;
         }
-        const place: Place = { id: 'meet', name, coord, type: 'meeting' };
-        const g = s().group;
-        if (g) updateGroup({ meetingPlace: place });
+        // Firestore rejects `undefined` fields, so only include address when there is one.
+        const place: Place = { id: 'meet', name, coord, type: 'meeting', ...(address ? { address } : {}) };
+        const current = s().group;
+        const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: place } });
         else set({ personalMeetingPlace: place });
-        await routeTo(place);
         // Not awaited + caught: hangs offline, and a denied write must not be an unhandled rejection.
         if (g) fb.setMeetingPlace(g.id, place).catch((e) => console.warn('setMeetingPlace', e?.message));
+        // Only re-route when this is the place we'd actually head to (current group, or personal).
+        if (!g || g.id === current?.id) await routeTo(place);
       },
       async addSafeArea(coord, name) {
         const place: Place = { id: `safe-${Date.now()}`, name, coord, type: 'custom' };

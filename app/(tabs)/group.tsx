@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
+import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, statusColor } from '@/theme';
 import type { Member } from '@/types';
@@ -16,6 +17,8 @@ export default function GroupScreen() {
   const [code, setCode] = useState('');
   const [newName, setNewName] = useState('');
   const [placeName, setPlaceName] = useState('');
+  const [address, setAddress] = useState('');
+  const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -33,9 +36,21 @@ export default function GroupScreen() {
   };
   const setHere = () => {
     if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
-    if (!myLocation) return Alert.alert('No location yet', 'Wait for a GPS fix, or long-press the map instead.');
-    actions.setMeetingPlace(myLocation, placeName.trim() || 'Meeting place');
+    if (!myLocation) return Alert.alert('No location yet', 'Wait for a GPS fix, or type an address instead.');
+    actions.setMeetingPlace(myLocation, placeName.trim() || 'Meeting place', group?.id);
     setPlaceName('');
+  };
+  const setFromAddress = async () => {
+    if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
+    const typed = address.trim();
+    if (!typed) return Alert.alert('Enter an address', 'For example "4060 George Washington Ln NE, Seattle".');
+    setFinding(true);
+    const coord = await geocodeAddress(typed);
+    setFinding(false);
+    if (!coord) return Alert.alert("Couldn't find that address", 'Check the spelling, add the city, or drop a pin on the Map tab instead.');
+    await actions.setMeetingPlace(coord, placeName.trim() || typed, group?.id, typed);
+    setPlaceName('');
+    setAddress('');
   };
 
   return (
@@ -77,12 +92,33 @@ export default function GroupScreen() {
         <>
           <Text style={styles.h1}>{group.name}</Text>
           <Text style={styles.muted}>Invite code: <Text style={styles.code}>{group.inviteCode}</Text></Text>
-          <Text style={styles.muted}>Meeting place: {group.meetingPlace ? group.meetingPlace.name : 'not set yet'}</Text>
+          <Text style={styles.muted}>
+            Meeting place: {group.meetingPlace ? group.meetingPlace.name : 'not set yet'}
+            {group.meetingPlace?.address ? ` · ${group.meetingPlace.address}` : ''}
+          </Text>
           <View style={styles.box}>
-            <Text style={styles.name}>Set meeting place</Text>
+            <Text style={styles.name}>Set meeting place for {group.name}</Text>
             <TextInput style={styles.input} editable={isOnline} placeholder="Name it (e.g. Front lawn)" placeholderTextColor={colors.muted} value={placeName} onChangeText={setPlaceName} />
-            <Pressable style={[styles.btn, !isOnline && { opacity: 0.5 }]} disabled={!isOnline} onPress={setHere}><Text style={styles.btnText}>Use my current location</Text></Pressable>
-            <Text style={styles.muted}>{isOnline ? 'Or long-press anywhere on the Map tab to drop it there.' : 'Meeting place changes are locked while offline.'}</Text>
+            <TextInput
+              style={styles.input}
+              editable={isOnline && !finding}
+              placeholder="Address (e.g. 4060 George Washington Ln NE, Seattle)"
+              placeholderTextColor={colors.muted}
+              value={address}
+              onChangeText={setAddress}
+              autoCorrect={false}
+              returnKeyType="search"
+              onSubmitEditing={() => void setFromAddress()}
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable style={[styles.btn, { flex: 1 }, (!isOnline || finding) && { opacity: 0.5 }]} disabled={!isOnline || finding} onPress={() => void setFromAddress()}>
+                <Text style={styles.btnText}>{finding ? 'Finding…' : 'Use address'}</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, { flex: 1 }, !isOnline && { opacity: 0.5 }]} disabled={!isOnline} onPress={setHere}>
+                <Text style={styles.btnText}>Use my location</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.muted}>{isOnline ? 'Or on the Map tab: hold a spot for 1 second, slide to a group, and let go.' : 'Meeting place changes are locked while offline.'}</Text>
           </View>
           <FlatList
             style={{ marginTop: 12 }}
