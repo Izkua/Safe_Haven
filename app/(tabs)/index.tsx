@@ -1,7 +1,8 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
@@ -17,6 +18,19 @@ const STALE_MS = 15 * 60_000;
 // Android's Google base map often renders blank in Expo Go (Play services / API key issues).
 // With a tile key configured, draw configured raster tiles instead — same provider as the offline cache.
 const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
+
+/** The route card's ⓘ: safety disclaimer plus the credits/links that used to crowd the card. */
+function showRouteInfo(to: { latitude: number; longitude: number }) {
+  Alert.alert(
+    'About this route',
+    'Routes do not account for disaster hazards or guarantee safe passage. Always follow instructions from local officials.\n\nWalking routes by FOSSGIS / OSRM using © OpenStreetMap contributors.',
+    [
+      { text: 'Routing service', onPress: () => Linking.openURL('https://routing.openstreetmap.de/about.html') },
+      { text: 'Fix the map', onPress: () => Linking.openURL(`https://www.openstreetmap.org/fixthemap?mlat=${to.latitude}&mlon=${to.longitude}#map=17/${to.latitude}/${to.longitude}`) },
+      { text: 'OK', style: 'cancel' },
+    ],
+  );
+}
 
 export default function MapScreen() {
   const { state, actions } = useApp();
@@ -120,16 +134,19 @@ export default function MapScreen() {
         {DEMO_MODE && <Text style={styles.demo}>DEMO MODE · no Firebase config</Text>}
         {route && (
           <View style={styles.routeCard}>
-            <Text style={styles.routeTitle}>→ {route.targetName}</Text>
+            <View style={styles.routeHeader}>
+              <Text style={styles.routeTitle} numberOfLines={1}>→ {route.targetName}</Text>
+              <Pressable onPress={() => showRouteInfo(route.to)} hitSlop={12} accessibilityRole="button" accessibilityLabel="About this route">
+                <Ionicons name="information-circle-outline" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
             <Text style={styles.routeSub}>
               {formatDistance(route.distanceM)}
               {route.isStraightLine ? ' · Straight-line direction' : ` · ~${Math.max(1, Math.round(route.durationS / 60))} min walk`}
               {!route.isStraightLine && (routeIsCached || !isOnline) ? ` · Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}` : ''}
             </Text>
-            <Text style={styles.routeSub}>Routes do not account for disaster hazards or guarantee safe passage.</Text>
-            <Text style={styles.routeSub} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>Walking routes: FOSSGIS / OSRM</Text>
-            <Text style={styles.routeSub} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap contributors</Text>
-            <Text style={styles.routeSub} onPress={() => Linking.openURL(`https://www.openstreetmap.org/fixthemap?mlat=${route.to.latitude}&mlon=${route.to.longitude}#map=17/${route.to.latitude}/${route.to.longitude}`)}>Fix the map</Text>
+            {/* OpenStreetMap's license requires visible credit wherever its data is shown. */}
+            <Text style={styles.routeCredit} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap · FOSSGIS</Text>
           </View>
         )}
         {routingLoading && <Text style={styles.demo}>Finding walking route…</Text>}
@@ -153,8 +170,10 @@ const styles = StyleSheet.create({
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12, gap: 8 },
   demo: { alignSelf: 'center', backgroundColor: colors.warn, color: '#000', fontWeight: '600', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, overflow: 'hidden', fontSize: 12 },
   routeCard: { backgroundColor: colors.card, borderRadius: 12, padding: 12 },
-  routeTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
+  routeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routeTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '700' },
   routeSub: { color: colors.muted, marginTop: 2 },
+  routeCredit: { color: colors.muted, fontSize: 10, opacity: 0.7, marginTop: 4 },
   attribution: { position: 'absolute', bottom: 84, right: 12, fontSize: 10, color: '#333', backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 4, borderRadius: 4, overflow: 'hidden' },
   actions: { position: 'absolute', bottom: 16, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
 });
