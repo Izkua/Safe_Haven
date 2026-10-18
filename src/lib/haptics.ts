@@ -1,31 +1,20 @@
-// [OWNER: UI] Vibration per urgency level (design: urgency ladder).
-// watch: one light tap · warning: two heavy pulses · emergency: heavy pulses repeating until acknowledged.
+// [OWNER: UI] Brief attention patterns, once per warning; revisiting a warning stays quiet.
 import * as Haptics from 'expo-haptics';
+import { claimAlertAttention } from '@/lib/alertAttention';
 import type { Urgency } from '@/theme';
-
 const safe = (p: Promise<void>) => p.catch(() => {});
-const heavy = () => safe(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
-
-/** Plays the pattern for `level`. Returns a stop function (needed for the repeating emergency pattern). */
 export function buzzFor(level: Urgency): () => void {
+  const heavy = () => safe(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
   if (level === 'watch') {
     safe(Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
     return () => {};
   }
-  if (level === 'warning') {
-    heavy();
-    const t = setTimeout(heavy, 300);
-    return () => clearTimeout(t);
-  }
-  // emergency: triple heavy pulse every 1.5 s
-  const burst = () => {
-    heavy();
-    setTimeout(heavy, 180);
-    setTimeout(heavy, 360);
-  };
-  burst();
-  const id = setInterval(burst, 1500);
-  return () => clearInterval(id);
+  heavy();
+  const delays = level === 'warning' ? [300] : [180, 360];
+  const timers = delays.map(delay => setTimeout(heavy, delay));
+  return () => timers.forEach(clearTimeout);
 }
-
+export function buzzForAlert(id: string, level: Urgency): () => void {
+  return claimAlertAttention(id, 'haptics') ? buzzFor(level) : () => {};
+}
 export const tap = () => safe(Haptics.selectionAsync());

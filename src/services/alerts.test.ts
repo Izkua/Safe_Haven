@@ -1,8 +1,9 @@
 import { beforeEach, expect, jest, test } from '@jest/globals';
-import { checkAlerts, hazardFromNwsEvent, parseNwsAlerts, parseUsgsQuakes } from './alerts';
+import { checkAlerts, notifyAlert, hazardFromNwsEvent, parseNwsAlerts, parseUsgsQuakes } from './alerts';
+import { scheduleNotificationAsync } from 'expo-notifications';
 import type { LatLng } from '@/types';
 
-jest.mock('expo-notifications', () => ({ setNotificationHandler: jest.fn() }));
+jest.mock('expo-notifications', () => ({ setNotificationHandler: jest.fn(), scheduleNotificationAsync: jest.fn(async () => 'notice-id') }));
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
   default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => {}) },
@@ -123,4 +124,14 @@ test('checkAlerts: most severe first, and an alert (or its update) only pops up 
 
 beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+test('the same warning cannot schedule a second sounding notification', async () => {
+  jest.mocked(scheduleNotificationAsync).mockClear();
+  const [alert] = parseNwsAlerts({ features: [nwsFeature({ id: 'notification-once' })] }, NOW);
+  await notifyAlert(alert);
+  await notifyAlert(alert);
+  expect(scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  await notifyAlert({ ...alert, id: 'a-new-warning' });
+  expect(scheduleNotificationAsync).toHaveBeenCalledTimes(2);
 });

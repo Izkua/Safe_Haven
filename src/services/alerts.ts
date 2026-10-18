@@ -1,5 +1,6 @@
 // [OWNER: ALERTS] Disaster feeds + local notifications.
 import type * as NotificationsModule from 'expo-notifications';
+import { claimAlertAttention } from '@/lib/alertAttention';
 import { distanceM, pointInPolygon } from '@/lib/geo';
 import type { AlertSeverity, HazardAlert, HazardType, LatLng } from '@/types';
 
@@ -54,7 +55,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function notifyAlert(alert: HazardAlert): Promise<void> {
-  if (!Notifications) return;
+  if (!Notifications || !claimAlertAttention(alert.id, 'sound')) return;
   await Notifications.scheduleNotificationAsync({
     content: { title: alert.title, body: alert.instruction ?? alert.description, data: { alertId: alert.id } },
     trigger: null,
