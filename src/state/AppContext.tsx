@@ -351,6 +351,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // One notification per new announcement (the banner itself shows the newest undismissed).
     for (const a of r.alerts) alerts.notify(`${a.senderName} to ${a.groupName}`, a.details ? `${a.title}\n${a.details}` : a.title).catch(() => {});
   }, [set, persistAnnouncements]);
+  /** [UI] Records that this phone joined a group now (before its announcement listener starts). */
+  const markJoined = useCallback((groupId: string) => {
+    groupJoinedAt.current = { ...groupJoinedAt.current, [groupId]: Date.now() };
+    persistAnnouncements(stateRef.current.announcements);
+  }, [persistAnnouncements]);
   const [announcementsReady, setAnnouncementsReady] = useState(false);
   useEffect(() => {
     AsyncStorage.getItem(ANNOUNCEMENTS_KEY)
@@ -531,6 +536,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.createGroup(uid, name).catch(() => null);
+        if (g) markJoined(g.id);
         if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
@@ -538,6 +544,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.joinGroup(uid, code.trim().toUpperCase()).catch(() => null);
+        // Fresh join time even if you were in this group before, so its past announcements stay hidden.
+        if (g) markJoined(g.id);
         if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
@@ -545,6 +553,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { group, myUid } = s();
         if (!group) return;
         if (myUid && !DEMO_MODE) void fb.leaveGroup(myUid, group.id);
+        const { [group.id]: _left, ...stillIn } = groupJoinedAt.current;
+        groupJoinedAt.current = stillIn;
+        persistAnnouncements(s().announcements);
         dispatch({ type: 'removeGroup', id: group.id });
       },
       selectGroup(id) {
@@ -626,7 +637,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (ack && !DEMO_MODE) void fb.ackAnnouncement(target.groupId, id, myUid!);
       },
     };
-  }, [set, beginRouteRequest, receiveAnnouncements, persistAnnouncements]);
+  }, [set, beginRouteRequest, receiveAnnouncements, persistAnnouncements, markJoined]);
 
   actionsRef.current = actions;
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
