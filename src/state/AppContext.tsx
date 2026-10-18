@@ -47,6 +47,9 @@ export interface AppState {
   routeIsCached: boolean;
   myUid: string | null;
   myName: string;
+  /** My profile picture (small JPEG data URI) and the phone number I share, both optional. */
+  myPhoto: string | null;
+  myPhone: string | null;
   myLocation: LatLng | null;
   myStatus: MemberStatus;
   /** Every group I'm in. */
@@ -81,6 +84,8 @@ const initial: AppState = {
   routeIsCached: false,
   myUid: null,
   myName: 'Me',
+  myPhoto: null,
+  myPhone: null,
   myLocation: null,
   myStatus: 'unknown',
   groups: [],
@@ -146,6 +151,10 @@ export interface AppActions {
   clearRoute(): void;
   setStatus(status: MemberStatus): Promise<void>;
   setName(name: string): Promise<void>;
+  /** Set or clear (null) my profile picture. */
+  setPhoto(photo: string | null): void;
+  /** Set or clear ('' ) the phone number my groups can see. */
+  setPhone(phone: string): void;
   createGroup(name: string): Promise<boolean>;
   joinGroup(code: string): Promise<boolean>;
   /** Leaves the current group (others stay). */
@@ -195,6 +204,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patch: {
           myUid: uid,
           myName: snap?.myName ?? 'Me',
+          myPhoto: snap?.myPhoto ?? null,
+          myPhone: snap?.myPhone ?? null,
           // [UI] Meeting points belong to a group now: ignore any personal one saved by an older version.
           personalMeetingPlace: null,
           groups: savedGroups,
@@ -345,6 +356,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       personalMeetingPlace: state.personalMeetingPlace,
       myUid: state.myUid,
       myName: state.myName,
+      myPhoto: state.myPhoto,
+      myPhone: state.myPhone,
       group: state.group,
       groups: state.groups,
       activeGroupId: state.activeGroupId,
@@ -353,7 +366,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       route: state.route,
       tiles: state.tiles,
     });
-  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.myName, state.groups, state.activeGroupId, state.visibleGroupIds, state.members, state.route, state.tiles]);
+  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.myName, state.myPhoto, state.myPhone, state.groups, state.activeGroupId, state.visibleGroupIds, state.members, state.route, state.tiles]);
 
   const actions = useMemo<AppActions>(() => {
     const s = () => stateRef.current;
@@ -465,6 +478,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ myName: name });
         const uid = s().myUid;
         if (uid) fb.saveProfile(uid, name).catch((e) => console.warn('saveProfile', e?.message));
+      },
+      setPhoto(photo) {
+        set({ myPhoto: photo });
+        const uid = s().myUid;
+        if (uid) void fb.saveProfileExtras(uid, { photo });
+      },
+      setPhone(phone) {
+        const clean = phone.trim().slice(0, 32) || null;
+        set({ myPhone: clean });
+        const uid = s().myUid;
+        if (uid) void fb.saveProfileExtras(uid, { phone: clean });
       },
       async createGroup(name) {
         const uid = s().myUid;

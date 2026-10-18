@@ -2,18 +2,22 @@
 // Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
 // You can be in several groups: chips at the top pick the current one, or add another.
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Avatar } from '@/components/Avatar';
 import { BigButton } from '@/components/BigButton';
+import { MemberSheet } from '@/components/MemberSheet';
+import { allMemberIds } from '@/lib/groups';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress, reverseGeocode } from '@/services/location';
 import { useApp } from '@/state/AppContext';
-import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
+import { colors, groupColor, memberColor, minTarget, radius, statusColor } from '@/theme';
 import type { LatLng, Member } from '@/types';
 
 const STALE_MS = 60 * 60_000;
@@ -25,6 +29,24 @@ export default function GroupScreen() {
   // Everyone else in the CURRENT group (state.members spans all my groups).
   const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
   const [mode, setMode] = useState<'none' | 'join' | 'create' | 'meeting'>('none');
+  // Person tapped in the list: shown in a sheet with photo, number and location.
+  const [openUid, setOpenUid] = useState<string | null>(null);
+  const openMember = members.find((m) => m.uid === openUid) ?? null;
+  // Same color order as the map pins, so someone looks the same everywhere.
+  const colorOrder = allMemberIds(group ? [group, ...groups] : groups);
+  const placeOf = (m: Member) => ({ id: `member-${m.uid}`, name: m.name, coord: m.location!, type: 'custom' as const });
+  const showOnMap = (m: Member) => {
+    if (!m.location) return;
+    setOpenUid(null);
+    requestMapFocus({ place: placeOf(m), label: m.name });
+    router.navigate('/');
+  };
+  const directionsTo = (m: Member) => {
+    if (!m.location) return;
+    setOpenUid(null);
+    void actions.routeTo(placeOf(m));
+    router.navigate('/');
+  };
   // Adding another group while already in one: show the join/create screen instead of the group.
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
@@ -236,7 +258,9 @@ export default function GroupScreen() {
         <Text style={styles.heading}>People</Text>
         {sorted.length ? (
           <View>
-            {sorted.map((m, i) => <MemberRow key={m.uid} m={m} me={myLocation} last={i === sorted.length - 1} />)}
+            {sorted.map((m, i) => (
+              <MemberRow key={m.uid} m={m} me={myLocation} last={i === sorted.length - 1} color={memberColor(m.uid, colorOrder)} onPress={() => { tap(); setOpenUid(m.uid); }} />
+            ))}
           </View>
         ) : (
           <Text style={styles.body}>No one else has joined yet. Invite them below.</Text>
@@ -330,11 +354,20 @@ export default function GroupScreen() {
         )}
       </ScrollView>
       </KeyboardAvoidingView>
+      <MemberSheet
+        member={openMember}
+        color={openMember ? memberColor(openMember.uid, colorOrder) : colors.card}
+        me={myLocation}
+        isOnline={isOnline}
+        onClose={() => setOpenUid(null)}
+        onShowOnMap={showOnMap}
+        onDirections={directionsTo}
+      />
     </SafeAreaView>
   );
 }
 
-function MemberRow({ m, me, last }: { m: Member; me: LatLng | null; last: boolean }) {
+function MemberRow({ m, me, last, color, onPress }: { m: Member; me: LatLng | null; last: boolean; color: string; onPress: () => void }) {
   const age = m.locationTs ? Date.now() - m.locationTs : null;
   const help = m.status === 'need_help';
   const stale = age === null || age > STALE_MS;
@@ -348,14 +381,27 @@ function MemberRow({ m, me, last }: { m: Member; me: LatLng | null; last: boolea
   const dist = me && m.location ? formatDistance(distanceM(me, m.location)) : null;
   const icon: ComponentProps<typeof Ionicons>['name'] = help ? 'alert-circle' : m.status === 'safe' ? 'checkmark-circle' : 'ellipse-outline';
   return (
-    <View style={[styles.row, !last && styles.rowRule]} accessible accessibilityLabel={`${m.name}. ${line}${dist ? `. ${dist} away` : ''}`}>
-      <Ionicons name={icon} size={26} color={statusColor[m.status]} />
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, !last && styles.rowRule, { opacity: pressed ? 0.6 : 1 }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${m.name}. ${line}${dist ? `. ${dist} away` : ''}`}
+      accessibilityHint="Shows their photo, phone number and location"
+    >
+      <View>
+        <Avatar name={m.name} photo={m.photo} color={color} size={44} />
+        {/* Status badge on the avatar's corner. */}
+        <View style={styles.badge}>
+          <Ionicons name={icon} size={18} color={statusColor[m.status]} />
+        </View>
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.name}>{m.name}</Text>
         <Text style={[styles.status, help && styles.statusHelp]}>{line}</Text>
       </View>
       {dist && <Text style={[styles.dist, stale && !help && { color: colors.muted }]}>{dist}</Text>}
-    </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -409,6 +455,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 17, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingVertical: 10 },
   rowRule: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.rule },
+  badge: { position: 'absolute', right: -4, bottom: -4, backgroundColor: colors.bg, borderRadius: 11, width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 17, fontWeight: '600', color: colors.text },
   status: { fontSize: 15, lineHeight: 20, color: colors.muted },
   statusHelp: { color: colors.dangerText, fontWeight: '600' },
