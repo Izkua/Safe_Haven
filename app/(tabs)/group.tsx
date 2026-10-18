@@ -276,12 +276,27 @@ export default function GroupScreen() {
               onPress={() => Share.share({ message: `Join my SafeHaven group "${group.name}" with code ${group.inviteCode}` })}
             />
             <BigButton
-              label="Change meeting point"
+              label={meet ? 'Change meeting point' : 'Set meeting point'}
               icon="location-outline"
               variant="secondary"
               disabled={!isOnline}
               onPress={() => open('meeting')}
             />
+            {meet && (
+              <BigButton
+                label="Remove meeting point"
+                icon="trash-outline"
+                variant="plain"
+                disabled={!isOnline}
+                accessibilityHint={`Removes ${meet.name} for everyone in ${group.name}`}
+                onPress={() =>
+                  Alert.alert(`Remove ${meet.name}?`, `Everyone in ${group.name} will no longer see this meeting point. You can set a new one any time.`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Remove', style: 'destructive', onPress: () => void actions.clearMeetingPlace(group.id) },
+                  ])
+                }
+              />
+            )}
             {!isOnline && <Text style={styles.hint}>The meeting point can’t change while you’re offline.</Text>}
             <BigButton
               label="Leave group"

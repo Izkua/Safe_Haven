@@ -333,7 +333,8 @@ export async function publishStatus(uid: string, status: MemberStatus): Promise<
   fire('publishStatus', setDoc(doc(firestore, 'users', uid), { status }, { merge: true }));
 }
 
-export async function setMeetingPlace(groupId: string, place: Place): Promise<void> {
+/** `null` removes the group's meeting place. */
+export async function setMeetingPlace(groupId: string, place: Place | null): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
   fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));

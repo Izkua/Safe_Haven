@@ -131,6 +131,8 @@ export interface AppActions {
    * Each group keeps its own meeting place.
    */
   setMeetingPlace(coord: LatLng, name?: string, groupId?: string, address?: string): Promise<void>;
+  /** [UI] Remove a group's meeting place (default: current group; no group: the personal one). Online only. */
+  clearMeetingPlace(groupId?: string): Promise<void>;
   addSafeArea(coord: LatLng, name: string): Promise<void>;
   routeTo(target: Place): Promise<void>;
   routeToBestTarget(): Promise<void>;
@@ -180,7 +182,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patch: {
           myUid: uid,
           myName: snap?.myName ?? 'Me',
-          personalMeetingPlace: snap?.personalMeetingPlace ?? null,
+          // [UI] Meeting points belong to a group now: ignore any personal one saved by an older version.
+          personalMeetingPlace: null,
           groups: savedGroups,
           activeGroupId: snap?.activeGroupId ?? snap?.group?.id ?? savedGroups[0]?.id ?? null,
           visibleGroupIds: snap?.visibleGroupIds ?? savedGroups.map((g) => g.id),
@@ -346,6 +349,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     return {
       async setMeetingPlace(coord, name = 'Meeting place', groupId, address) {
+        // [UI] A meeting point is for a group; without one there's no one to meet.
+        if (!(groupId ? s().groups.some((x) => x.id === groupId) : s().group)) {
+          Alert.alert('Join a group first', 'Meeting points are shared with a group. Create or join one on the Group tab.');
+          return;
+        }
         if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
           Alert.alert('Meeting place locked offline', 'Reconnect to the internet to change the meeting place. Your saved location has not changed.');
           return;
@@ -360,6 +368,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (g) fb.setMeetingPlace(g.id, place).catch((e) => console.warn('setMeetingPlace', e?.message));
         // Only re-route when this is the place we'd actually head to (current group, or personal).
         if (!g || g.id === current?.id) await routeTo(place);
+      },
+      async clearMeetingPlace(groupId) {
+        if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+          Alert.alert('Meeting place locked offline', 'Reconnect to the internet to remove the meeting place. Your saved location has not changed.');
+          return;
+        }
+        const current = s().group;
+        const g = groupId ? s().groups.find((x) => x.id === groupId) ?? null : current;
+        if (g) dispatch({ type: 'upsertGroup', group: { ...g, meetingPlace: null } });
+        else set({ personalMeetingPlace: null });
+        if (g) fb.setMeetingPlace(g.id, null).catch((e) => console.warn('clearMeetingPlace', e?.message));
+        // Drop the route if it was heading to the place we just removed.
+        const { route } = s();
+        if ((!g || g.id === current?.id) && route?.targetId === 'meet') set({ route: null });
       },
       async addSafeArea(coord, name) {
         const place: Place = { id: `safe-${Date.now()}`, name, coord, type: 'custom' };
