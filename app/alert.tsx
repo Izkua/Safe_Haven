@@ -12,6 +12,7 @@ import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
+import { requestMapFocus } from '@/lib/mapFocus';
 import { isUserAffected } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
 import { colors, minTarget, radius, urgencyFor } from '@/theme';
@@ -43,10 +44,14 @@ export default function AlertScreen() {
     return () => stopBuzz.current();
   }, [a?.id, level]);
 
-  const go = async (place: Place) => {
+  // Route there and take the user straight to the Map (not back to whichever tab opened the alert).
+  // Don't wait for the walking route: routeTo draws a line right away and upgrades it when it arrives.
+  const go = (place: Place) => {
     stopBuzz.current();
-    await actions.routeTo(place);
-    router.back();
+    void actions.routeTo(place);
+    requestMapFocus({ place, label: place.name, showMe: true });
+    if (router.canDismiss()) router.dismissAll();
+    router.navigate('/');
   };
   const safe = () => {
     stopBuzz.current();

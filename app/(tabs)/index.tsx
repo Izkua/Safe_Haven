@@ -13,7 +13,7 @@ import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
-import { takeMapFocus } from '@/lib/mapFocus';
+import { onMapFocusRequest, takeMapFocus } from '@/lib/mapFocus';
 import { UW_CENTER } from '@/mocks/demo';
 import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress } from '@/services/location';
@@ -129,18 +129,35 @@ export default function MapScreen() {
     [closedOffset, open, pending],
   );
 
-  // Picked another group on the Group tab: when the Map comes back into view, center on that group's
-  // meeting point. If we're walking somewhere else, offer it in the panel ("Go to …"); never auto-route.
-  useFocusEffect(
-    useCallback(() => {
-      const f = takeMapFocus();
-      if (!f) return;
-      const { place, label } = f;
-      mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
-      const routedThere = !!route && route.to.latitude === place.coord.latitude && route.to.longitude === place.coord.longitude;
-      if (route && !routedThere) pick(place, label);
-    }, [route]),
-  );
+  // "Show this on the map" requests from other screens:
+  //  - Group tab (picked another group): center on that group's meeting point. If we're walking
+  //    somewhere else, offer it in the panel ("Go to …"); never auto-route.
+  //  - Alert screen ("Go to meeting point", showMe): frame my pin, the place and the route.
+  // Applied as soon as the request arrives when the map is mounted (the alert closes over it, and
+  // focus events weren't reliable there), else when the Map comes into view. Refs keep it current.
+  const focusState = useRef({ route, myLocation });
+  focusState.current = { route, myLocation };
+  const applyMapFocus = () => {
+    const f = takeMapFocus();
+    if (!f) return;
+    const { place, label, showMe } = f;
+    const { route: r, myLocation: me } = focusState.current;
+    const routedThere = !!r && r.to.latitude === place.coord.latitude && r.to.longitude === place.coord.longitude;
+    if (showMe && me) {
+      // Both pins, plus the route line (a walking route can bend outside the straight line between them).
+      // Bottom padding sits on top of mapPadding, which already clears the panel. Short delay so the
+      // alert's closing animation doesn't swallow the camera move.
+      const coords = [me, place.coord, ...(routedThere ? r!.points : [])];
+      setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true }), 350);
+      return;
+    }
+    mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
+    if (r && !routedThere && !showMe) pick(place, label);
+  };
+  const applyRef = useRef(applyMapFocus);
+  applyRef.current = applyMapFocus;
+  useEffect(() => onMapFocusRequest(() => applyRef.current()), []);
+  useFocusEffect(useCallback(() => applyRef.current(), []));
 
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
