@@ -223,7 +223,7 @@ Services must **never throw into the UI when offline**. Catch the error and retu
 - **Icons:** `import Ionicons from '@expo/vector-icons/Ionicons'`, not `{ Ionicons } from '@expo/vector-icons'`. The barrel import bundles every icon font (+3 MB).
 - **Tests:** TypeScript 6 doesn't add Jest globals automatically, so `import { expect, test } from '@jest/globals'`.
 - `package.json` pins `react-dom` via `overrides`. Don't remove it, or `npm install` fails with ERESOLVE.
-- **Expo Go runs the latest SDK only** (we're on SDK 58). Run `npx expo install --check` after adding any Expo package.
+- **We're on SDK 57** because the App Store's Expo Go doesn't support SDK 58 yet. Don't upgrade until it does. Run `npx expo install --check` after adding any Expo package.
 - Background location and remote push **don't work in Expo Go**. They need the EAS dev build (ALERTS).
 
 ## Demo script

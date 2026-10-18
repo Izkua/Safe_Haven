@@ -4,8 +4,8 @@ import * as Location from 'expo-location';
 import { distanceM } from '@/lib/geo';
 import type { LatLng } from '@/types';
 
-export const PUBLISH_MIN_DISTANCE_M = 100;
-export const PUBLISH_MAX_INTERVAL_MS = 5 * 60_000;
+export const PUBLISH_MIN_DISTANCE_M = 20;
+export const PUBLISH_MAX_INTERVAL_MS = 60_000;
 
 export async function requestForegroundPermission(): Promise<boolean> {
   const { status } = await Location.requestForegroundPermissionsAsync();
@@ -14,7 +14,7 @@ export async function requestForegroundPermission(): Promise<boolean> {
 
 export async function startForegroundWatch(onUpdate: (c: LatLng) => void): Promise<() => void> {
   const sub = await Location.watchPositionAsync(
-    { accuracy: Location.Accuracy.Balanced, distanceInterval: 25, timeInterval: 10_000 },
+    { accuracy: Location.Accuracy.Balanced, distanceInterval: 10, timeInterval: 10_000 },
     (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
   );
   return () => sub.remove();
@@ -26,7 +26,7 @@ export async function startHeadingWatch(onHeading: (deg: number) => void): Promi
   return () => sub.remove();
 }
 
-/** Throttle for Firestore writes: publish if moved >100 m or 5 min passed. */
+/** Throttle for Firestore writes: publish if moved >20 m or 1 min passed (tuned so the demo looks live). */
 export function shouldPublish(
   last: { coord: LatLng; ts: number } | null,
   next: LatLng,
