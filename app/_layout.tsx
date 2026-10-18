@@ -36,7 +36,7 @@ function RootStack() {
         {/* [UI] Alert is a full-screen takeover (no header, no swipe-away); dismiss is inside the screen. */}
         <Stack.Screen name="alert" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
-        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Practice a disaster' }} />
+        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Practice a drill' }} />
       </Stack.Protected>
     </Stack>
   );

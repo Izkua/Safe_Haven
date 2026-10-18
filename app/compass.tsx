@@ -53,7 +53,7 @@ export default function CompassScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.screen}>
-      <Text style={styles.label}>{isOnline ? 'Heading to' : 'No signal · heading to'}</Text>
+      <Text style={styles.label}>{isOnline ? 'Heading to' : 'No signal. Heading to'}</Text>
       <Text style={styles.name} numberOfLines={2}>{target.name}</Text>
 
       <View style={styles.dialWrap}>
@@ -76,7 +76,7 @@ export default function CompassScreen() {
         )}
         {!arrived && <Text style={styles.mins}>About {mins} min</Text>}
       </View>
-      <Text style={styles.fine}>Straight-line distance · works without signal</Text>
+      <Text style={styles.fine}>Straight-line distance. Works without signal.</Text>
     </SafeAreaView>
   );
 }

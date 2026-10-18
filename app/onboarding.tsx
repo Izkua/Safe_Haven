@@ -254,7 +254,7 @@ function Page({ icon, title, body, children }: { icon: ComponentProps<typeof Ion
   return (
     <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
-        <Ionicons name={icon} size={72} color={colors.primary} />
+        <Ionicons name={icon} size={64} color={colors.text} accessibilityElementsHidden importantForAccessibility="no" />
         <Text style={styles.title} accessibilityRole="header">{title}</Text>
         <Text style={styles.body}>{body}</Text>
       </View>
@@ -273,12 +273,12 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.rule },
   dotActive: { backgroundColor: colors.text },
   page: { flexGrow: 1, justifyContent: 'space-between', padding: 24, gap: 32 },
-  hero: { alignItems: 'flex-start', gap: 16, marginTop: 32 },
-  title: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: '700' },
-  body: { color: colors.muted, fontSize: 17, lineHeight: 24 },
+  hero: { alignItems: 'center', gap: 14, marginTop: 40, paddingHorizontal: 8 },
+  title: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: '700', textAlign: 'center' },
+  body: { color: colors.muted, fontSize: 17, lineHeight: 24, textAlign: 'center', maxWidth: 340 },
   actions: { gap: 12 },
   input: { backgroundColor: colors.card, color: colors.text, borderRadius: radius, paddingHorizontal: 16, minHeight: 56, fontSize: 17 },
   codeInput: { textAlign: 'center', fontSize: 26, fontWeight: '700', letterSpacing: 6 },
-  warn: { color: colors.text, fontSize: 15, lineHeight: 21 },
-  error: { color: colors.dangerText, fontSize: 16, fontWeight: '700' },
+  warn: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  error: { color: colors.dangerText, fontSize: 16, fontWeight: '600', textAlign: 'center' },
 });

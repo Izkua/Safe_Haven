@@ -12,7 +12,7 @@ export function OfflineBanner() {
     <View style={styles.banner} accessibilityRole="alert">
       <Ionicons name="cloud-offline-outline" size={20} color={colors.text} />
       <Text style={styles.text}>
-        No signal · last updated {lastSyncedAt ? formatAge(Date.now() - lastSyncedAt) : 'never'}
+        No signal. Last updated {lastSyncedAt ? formatAge(Date.now() - lastSyncedAt) : 'never'}.
       </Text>
     </View>
   );

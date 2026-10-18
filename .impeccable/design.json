@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-18T02:00:04.350Z",
+  "generatedAt": "2026-10-18T02:22:51.758Z",
   "title": "Design System: SafeHaven",
   "extensions": {
     "colorMeta": {
@@ -451,7 +451,12 @@
     "rules": [
       {
         "name": "The Earned Color Rule",
-        "body": "Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong.",
+        "body": "Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills are practice, not danger: they're always neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The Danger Follows You Rule",
+        "body": "Live danger (an active alert, or a member asking for help) stays visible after the alert screen closes: a red Danger Banner at the top of the Map, and a red \"!\" badge on the Group tab.",
         "section": "colors"
       },
       {
@@ -471,7 +476,7 @@
       },
       {
         "name": "The Plain Words Rule",
-        "body": "Labels are verbs or short phrases a child could read aloud: \"Go to meeting point\", \"I need help\", \"Invite people\". No jargon and no labels above headings.",
+        "body": "Labels are verbs or short phrases a child could read aloud: \"Go to meeting point\", \"I need help\", \"Invite people\". No jargon and no labels above headings. Write sentences, not `·`-separated fragments: \"340 m away (about 5 min walk)\", \"Safe, 3 min ago\". The `·` is only for attribution credits.",
         "section": "typography"
       },
       {
@@ -502,7 +507,9 @@
     "donts": [
       "Don't use pure white (#FFFFFF), shadows, gradients or blur.",
       "Don't wrap content in bordered cards or build dashboard-style metric tiles (big number plus small label).",
-      "Don't use red, amber or green for anything that isn't danger, watch or safe.",
+      "Don't use red, amber or green for anything that isn't danger, watch or safe, including drills and practice.",
+      "Don't change the meeting point or the route on a map tap or long-press alone; always select, then confirm.",
+      "Don't chain fragments with `·` in UI copy.",
       "Don't put a label above a heading, or use type larger than 28pt outside the emergency headline.",
       "Don't set instructions below 17pt.",
       "Don't make an emergency alert dismissible with a single tap or a swipe.",

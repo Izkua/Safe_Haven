@@ -20,10 +20,10 @@ export default function SimulateScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 20 }}>
-      <Text style={styles.hint}>Simulates a warning centered on your location so you can practice what to do.</Text>
+      <Text style={styles.hint}>Pick a disaster to practice. You’ll see the same steps as a real alert, marked as a drill.</Text>
       {HAZARD_TYPES.map((h) => (
         <Pressable key={h} accessibilityRole="button" accessibilityLabel={`Practice ${HAZARDS[h].label}`} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={() => simulate(h)}>
-          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.dangerText} />
+          <Ionicons name={HAZARDS[h].icon} size={26} color={colors.text} />
           <Text style={styles.label}>{HAZARDS[h].label}</Text>
           <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>

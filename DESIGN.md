@@ -172,7 +172,9 @@ Two calm neutral worlds and three signal colors that each mean exactly one thing
 - **Slate Rule** (#3A3E44) / **Sand Rule** (#CDBFA6): hairline dividers between list rows only.
 
 ### Named Rules
-**The Earned Color Rule.** Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong.
+**The Earned Color Rule.** Red means danger, amber means watch, green means safe, and nothing else gets a color. If a screen shows red and nothing is dangerous, it's wrong. Drills are practice, not danger: they're always neutral.
+
+**The Danger Follows You Rule.** Live danger (an active alert, or a member asking for help) stays visible after the alert screen closes: a red Danger Banner at the top of the Map, and a red "!" badge on the Group tab.
 
 **The No White Rule.** No surface or text uses pure #FFFFFF. The brightest values are Mist (#ECEDEE), Sand Ink (#F4EEE3) and On Danger (#FFF4EF).
 
@@ -196,7 +198,7 @@ Two calm neutral worlds and three signal colors that each mean exactly one thing
 - **Fine** (400, 12/16): attribution and routing disclaimers only.
 
 ### Named Rules
-**The Plain Words Rule.** Labels are verbs or short phrases a child could read aloud: "Go to meeting point", "I need help", "Invite people". No jargon and no labels above headings.
+**The Plain Words Rule.** Labels are verbs or short phrases a child could read aloud: "Go to meeting point", "I need help", "Invite people". No jargon and no labels above headings. Write sentences, not `·`-separated fragments: "340 m away (about 5 min walk)", "Safe, 3 min ago". The `·` is only for attribution credits.
 
 ## Layout
 
@@ -206,7 +208,11 @@ The map is full-bleed under a **rounded bottom sheet** (20px top corners). The s
 - the destination name and a one-line summary;
 - one filled main button;
 - a row of two tonal buttons (Compass, Save map);
-- a plain red "Practice a disaster" link.
+- a plain, neutral "Practice a drill" link.
+
+Red Danger Banners stack above everything at the top when an alert is active or someone needs help.
+
+**Select, then confirm.** Long-pressing the map or tapping a safe area only *selects* it (a dashed pending marker). The sheet switches to that place with **Set as meeting point** (or **Go to [place]**) and **Cancel**, hiding the other buttons. Nothing changes until the user confirms. Without a selection, the main button is greyed out as "Route shown" while the current route is on screen. It re-enables to retry a straight-line route, or when someone else moves the meeting point.
 
 Status notices (no signal, saved map, routing) stack as rounded tonal banners under the top safe area.
 
@@ -243,7 +249,13 @@ Soft, friendly and consistent:
 - **States:** pressed is 70% opacity; disabled is 45%; loading shows a spinner in the label color.
 
 ### Status pair (I'm safe / I need help)
-Two equal 88pt tonal buttons with a 28pt icon above the label. "I'm safe" uses a green icon and label; "I need help" uses red. When active they fill: Safe Fill or Danger Red, with light text. Tapping one plays a selection haptic.
+Two 88pt tonal buttons with a 28pt icon above the label. "I'm safe" uses a green icon and label. "I need help" is the alarm: red icon and label **plus a 2px red outline even at rest**, so it outranks the reassurance. When active they fill: Safe Fill or Danger Red, with light text. Tapping one plays a selection haptic.
+
+### Danger Banner
+A full-width Danger Red banner (12px corners, at least 64pt tall) with a white-ish icon, a bold title and a one-line action: "Earthquake warning / Tap to see what to do", "Sis needs help / Tap to see where". Drills are titled "Drill: …". It is announced to screen readers and is the only red banner in the app.
+
+### Onboarding
+Each step centers the icon (64pt, text color), title (28/700) and body (17, max ~340pt wide) as one block, with the buttons below.
 
 ### Member rows
 A 26pt status icon, the name (17/600), a status line (15; red and 600 for "Needs help"), and the distance (17/600) on the right. Hairline dividers between rows; "Needs help" sorts first.
@@ -255,7 +267,7 @@ A tonal fill with no border, 12px corners, 56pt tall, 17pt text, and a 15pt labe
 A tonal track with 4px padding and three 48pt segments (Dark, Light, Match phone). The selected segment is filled with the primary color.
 
 ### Navigation
-Standard iOS tabs with an icon and a 12/600 label (Map, Group, First aid). The active tab uses the text color and a filled icon; inactive tabs use the secondary color and an outline icon. A hairline top divider. Stack headers match the page, with no shadow.
+Standard iOS tabs with an icon and a 12/600 label (Map, Group, First aid). The active tab uses the text color and a filled icon; inactive tabs use the secondary color and an outline icon. A hairline top divider. The Group tab shows a red "!" badge while anyone needs help. Stack headers match the page, with no shadow.
 
 ### Offline banner
 A rounded tonal banner with a cloud-offline icon: "No signal · last updated 14 min ago". Being offline isn't danger, so it's never red or amber.
@@ -285,7 +297,9 @@ A rounded tonal banner with a cloud-offline icon: "No signal · last updated 14 
 ### Don't:
 - **Don't** use pure white (#FFFFFF), shadows, gradients or blur.
 - **Don't** wrap content in bordered cards or build dashboard-style metric tiles (big number plus small label).
-- **Don't** use red, amber or green for anything that isn't danger, watch or safe.
+- **Don't** use red, amber or green for anything that isn't danger, watch or safe, including drills and practice.
+- **Don't** change the meeting point or the route on a map tap or long-press alone; always select, then confirm.
+- **Don't** chain fragments with `·` in UI copy.
 - **Don't** put a label above a heading, or use type larger than 28pt outside the emergency headline.
 - **Don't** set instructions below 17pt.
 - **Don't** make an emergency alert dismissible with a single tap or a swipe.

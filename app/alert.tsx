@@ -74,7 +74,7 @@ export default function AlertScreen() {
     : null;
   const myMeeting = group ? group.meetingPlace : state.personalMeetingPlace;
   const meeting = myMeeting && (!a.hazard || meetingPlaceOk(a.hazard)) ? myMeeting : null;
-  const dist = (p: Place) => (me ? ` · ${formatDistance(distanceM(me, p.coord))}` : '');
+  const dist = (p: Place) => (me ? ` (${formatDistance(distanceM(me, p.coord))})` : '');
 
   const emergency = level === 'emergency';
   const onRed = emergency || level === 'warning';
@@ -107,7 +107,7 @@ export default function AlertScreen() {
         <View style={styles.metaRow}>
           {info && <Ionicons name={info.icon} size={20} color={onHeader} />}
           <Text style={[styles.meta, { color: onHeader }]}>
-            {info ? `${info.label} · ` : ''}{levelName} · {when}
+            {a.source === 'simulated' ? 'Drill: ' : ''}{info ? `${info.label}, ` : ''}{levelName.toLowerCase()}, {when}
           </Text>
         </View>
       </View>
@@ -151,7 +151,7 @@ export default function AlertScreen() {
         )}
         {meeting && meeting.id !== best?.id && (
           <AlertButton
-            label={`Go to meeting point · ${meeting.name}${dist(meeting)}`}
+            label={`Go to meeting point: ${meeting.name}${dist(meeting)}`}
             icon="flag"
             bg={affected && best ? tonal : emergency ? colors.onDanger : colors.primary}
             fg={affected && best ? fg : emergency ? colors.danger : colors.onPrimary}

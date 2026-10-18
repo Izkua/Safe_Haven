@@ -100,7 +100,7 @@ export default function GroupScreen() {
       <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
         <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
         <Text style={styles.lead}>
-          {count} {count === 1 ? 'person' : 'people'} · Meet at {group.meetingPlace ? group.meetingPlace.name : 'no meeting point yet'}
+          {count} {count === 1 ? 'person' : 'people'}. {group.meetingPlace ? `Meet at ${group.meetingPlace.name}.` : 'No meeting point yet.'}
         </Text>
 
         <Text style={styles.heading}>How are you?</Text>
@@ -121,6 +121,7 @@ export default function GroupScreen() {
             tint={colors.dangerText}
             fill={colors.danger}
             onFill={colors.onDanger}
+            alarm
             onPress={() => setStatus('need_help')}
           />
         </View>
@@ -178,11 +179,11 @@ function MemberRow({ m, me, last }: { m: Member; me: LatLng | null; last: boolea
   const help = m.status === 'need_help';
   const stale = age === null || age > STALE_MS;
   const line = help
-    ? `Needs help · ${age !== null ? formatAge(age) : 'location unknown'}`
+    ? `Needs help, ${age !== null ? formatAge(age) : 'location unknown'}`
     : m.status === 'safe'
-      ? `Safe · ${age !== null ? formatAge(age) : 'location unknown'}`
+      ? `Safe, ${age !== null ? formatAge(age) : 'location unknown'}`
       : age !== null
-        ? `No check-in · seen ${formatAge(age)}`
+        ? `No check-in, seen ${formatAge(age)}`
         : 'No check-in yet';
   const dist = me && m.location ? formatDistance(distanceM(me, m.location)) : null;
   const icon: ComponentProps<typeof Ionicons>['name'] = help ? 'alert-circle' : m.status === 'safe' ? 'checkmark-circle' : 'ellipse-outline';
@@ -205,6 +206,8 @@ function StatusButton(p: {
   tint: ColorValue;
   fill: ColorValue;
   onFill: ColorValue;
+  /** Alarm actions show their color as an outline even before they're pressed. */
+  alarm?: boolean;
   onPress: () => void;
 }) {
   const fg = p.active ? p.onFill : p.tint;
@@ -213,7 +216,11 @@ function StatusButton(p: {
       accessibilityRole="button"
       accessibilityState={{ selected: p.active }}
       onPress={p.onPress}
-      style={({ pressed }) => [styles.statusBtn, { backgroundColor: p.active ? p.fill : colors.card, opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [
+        styles.statusBtn,
+        { backgroundColor: p.active ? p.fill : colors.card, opacity: pressed ? 0.7 : 1 },
+        p.alarm && { borderWidth: 2, borderColor: p.active ? p.fill : p.tint },
+      ]}
     >
       <Ionicons name={p.icon} size={28} color={fg} />
       <Text style={[styles.statusText, { color: fg }]}>{p.label}</Text>

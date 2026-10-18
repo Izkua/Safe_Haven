@@ -6,6 +6,7 @@ import { Alert, Linking, Platform, StyleSheet, Text, useColorScheme, View } from
 import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
+import { DangerBanner } from '@/components/DangerBanner';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
@@ -13,6 +14,7 @@ import { UW_CENTER } from '@/mocks/demo';
 import { downloadRegion, localTilePath, ONLINE_TILE_URL, planTiles, TILE_ATTRIBUTION, tileConfigurationError } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, mapOverlayColors, memberColor, radius } from '@/theme';
+import type { LatLng, Place } from '@/types';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
@@ -24,9 +26,13 @@ export default function MapScreen() {
   const { state, actions } = useApp();
   const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
   const { group, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const needHelp = members.filter((m) => m.status === 'need_help');
   const mapRef = useRef<MapView>(null);
   const downloadBusy = useRef(false);
   const [tileProgress, setTileProgress] = useState<string | null>(null);
+  // A place picked on the map but not confirmed yet: a long-press (new meeting point) or a tapped safe area.
+  const [pending, setPending] = useState<{ kind: 'meeting'; coord: LatLng } | { kind: 'place'; place: Place } | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
@@ -75,18 +81,50 @@ export default function MapScreen() {
   };
 
   const busyLabel = tileProgress ? `Saving map ${tileProgress}` : null;
+  // The route already on screen goes to the current target, so the main button has nothing to do
+  // (it stays greyed) until a new place is picked. A failed walking route can still be retried.
+  // Someone else in the group moved the meeting point after this route was drawn.
+  const meetingMoved =
+    !!route && !!meetingPlace && route.targetId === meetingPlace.id &&
+    (route.to.latitude !== meetingPlace.coord.latitude || route.to.longitude !== meetingPlace.coord.longitude);
+  const routeShown = !!route && !routingLoading && !meetingMoved;
+  const canRetry = routeShown && route!.isStraightLine && isOnline;
+  const goDisabled = !target || (routeShown && !canRetry);
   const goLabel = routingLoading
     ? "Finding walking route…"
     : !target
       ? "Set a meeting point first"
-      : route
-        ? `Update route to ${target.name}`
-        : target.label === "Nearest safe area"
-          ? "Go to nearest safe area"
-          : "Go to meeting point";
+      : meetingMoved
+        ? "Route to new meeting point"
+        : canRetry
+        ? "Retry walking route"
+        : routeShown
+          ? "Route shown"
+          : target.label === "Nearest safe area"
+            ? "Go to nearest safe area"
+            : "Go to meeting point";
   const summary = target
-    ? [target.label, meters !== null ? formatDistance(meters) : null, walk].filter(Boolean).join(" · ")
+    ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ""}${walk ? ` (about ${walk})` : ""}`
     : "Long-press the map to drop a meeting point.";
+
+  // Pending selection: what it is, how far, and what confirming will do.
+  const pendingCoord = pending ? (pending.kind === 'meeting' ? pending.coord : pending.place.coord) : null;
+  const pendingMeters = pendingCoord && myLocation ? distanceM(myLocation, pendingCoord) : null;
+  const pendingTitle = pending?.kind === 'meeting' ? 'New meeting point' : pending?.place.name ?? '';
+  const pendingSummary = `${pendingMeters !== null ? `${formatDistance(pendingMeters)} away. ` : ''}${
+    pending?.kind === 'meeting' ? 'Your group will see this as the meeting point.' : 'Safe area.'
+  }`;
+  const confirmPending = async () => {
+    if (!pending) return;
+    setConfirming(true);
+    try {
+      if (pending.kind === 'meeting') await actions.setMeetingPlace(pending.coord);
+      else await actions.routeTo(pending.place);
+    } finally {
+      setConfirming(false);
+      setPending(null);
+    }
+  };
   const attribution = !isOnline ? (tiles?.attribution ?? TILE_ATTRIBUTION) : TILE_ATTRIBUTION;
 
   return (
@@ -103,7 +141,8 @@ export default function MapScreen() {
         mapPadding={{ top: 0, left: 0, right: 0, bottom: 290 }}
         onLongPress={(e) => {
           if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
-          void actions.setMeetingPlace(e.nativeEvent.coordinate);
+          // Only select it; nothing changes until the user confirms in the sheet.
+          setPending({ kind: 'meeting', coord: e.nativeEvent.coordinate });
         }}
       >
         {USE_TILE_BASEMAP && isOnline && <UrlTile urlTemplate={ONLINE_TILE_URL} tileSize={256} maximumZ={19} />}
@@ -123,8 +162,14 @@ export default function MapScreen() {
           </Marker>
         )}
 
+        {pending?.kind === 'meeting' && (
+          <Marker coordinate={pending.coord} title="New meeting point" description="Not saved yet" anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={[styles.meetingMarker, styles.pendingMarker]} />
+          </Marker>
+        )}
+
         {group?.safeAreas.map((p) => (
-          <Marker key={p.id} coordinate={p.coord} title={p.name} description={`${p.type.replace('_', ' ')} · tap to route`} anchor={{ x: 0.5, y: 0.5 }} onCalloutPress={() => actions.routeTo(p)}>
+          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => setPending({ kind: 'place', place: p })}>
             <View style={styles.safeMarker} />
           </Marker>
         ))}
@@ -141,7 +186,7 @@ export default function MapScreen() {
               key={`${m.uid}-${m.status}-${m.name}-${color}`}
               coordinate={m.location}
               title={help ? `${m.name} needs help` : m.name}
-              description={`${help ? 'Needs help' : m.status === 'safe' ? 'Safe' : 'No status'} · ${m.locationTs ? formatAge(age) : 'unknown'}`}
+              description={`${help ? 'Needs help' : m.status === 'safe' ? 'Safe' : 'No check-in'}, ${m.locationTs ? formatAge(age) : 'location unknown'}`}
               anchor={{ x: 0.5, y: 0.5 }}
               opacity={age > STALE_MS && !help ? 0.45 : 1}
             >
@@ -152,6 +197,23 @@ export default function MapScreen() {
       </MapView>
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
+        {/* Live danger first: it must stay visible after the alert screen closes. */}
+        {activeAlert && (
+          <DangerBanner
+            icon="warning"
+            title={`${activeAlert.source === 'simulated' ? 'Drill: ' : ''}${activeAlert.title.replace(/\s*\(SIMULATED\)\s*/i, '')}`}
+            action="Tap to see what to do"
+            onPress={() => router.push('/alert')}
+          />
+        )}
+        {needHelp.length > 0 && (
+          <DangerBanner
+            icon="alert-circle"
+            title={needHelp.length === 1 ? `${needHelp[0].name} needs help` : `${needHelp.length} people need help`}
+            action="Tap to see where"
+            onPress={() => router.navigate('/group')}
+          />
+        )}
         <OfflineBanner />
         {!isOnline && tiles && <Text style={styles.notice}>Using the map saved {formatAge(Date.now() - tiles.downloadedAt)}. Meeting point can’t change offline.</Text>}
         {!isOnline && !tiles && <Text style={styles.notice}>Meeting point can’t change while offline.</Text>}
@@ -160,6 +222,22 @@ export default function MapScreen() {
       </SafeAreaView>
 
       <View style={styles.sheet}>
+        {pending ? (
+          <>
+            <View style={styles.sheetHead}>
+              <Text style={styles.targetName} numberOfLines={2} accessibilityRole="header">{pendingTitle}</Text>
+              <Text style={styles.summary}>{pendingSummary}</Text>
+            </View>
+            <BigButton
+              label={pending.kind === 'meeting' ? 'Set as meeting point' : `Go to ${pending.place.name}`}
+              icon={pending.kind === 'meeting' ? 'flag' : 'navigate'}
+              loading={confirming}
+              onPress={() => void confirmPending()}
+            />
+            <BigButton label="Cancel" variant="plain" disabled={confirming} onPress={() => setPending(null)} />
+          </>
+        ) : (
+        <>
         <View style={styles.sheetHead}>
           <Text style={styles.targetName} numberOfLines={2} accessibilityRole="header">
             {target ? target.name : "No meeting point yet"}
@@ -169,9 +247,10 @@ export default function MapScreen() {
 
         <BigButton
           label={goLabel}
-          icon="navigate"
+          icon={routeShown && !canRetry ? 'checkmark' : 'navigate'}
           loading={routingLoading}
-          disabled={!target}
+          disabled={goDisabled}
+          accessibilityHint={routeShown && !canRetry ? 'Long-press the map to pick a new meeting point' : undefined}
           onPress={() => void actions.routeToBestTarget()}
         />
         <View style={styles.row}>
@@ -185,7 +264,10 @@ export default function MapScreen() {
             onPress={onDownloadTiles}
           />
         </View>
-        <BigButton label="Practice a disaster" icon="warning-outline" variant="plain" tone="danger" onPress={() => router.push('/simulate')} />
+        {/* Drills are practice, not danger: neutral, never red (red is reserved for live alerts). */}
+        <BigButton label="Practice a drill" icon="school-outline" variant="plain" onPress={() => router.push('/simulate')} />
+        </>
+        )}
 
         {(route || USE_TILE_BASEMAP || (!isOnline && tiles)) && (
           <Text style={styles.fine}>
@@ -218,5 +300,6 @@ const styles = StyleSheet.create({
   link: { textDecorationLine: 'underline' },
 
   meetingMarker: { width: 22, height: 22, borderRadius: 4, backgroundColor: colors.bg, borderWidth: 3, borderColor: colors.text, transform: [{ rotate: '45deg' }] },
+  pendingMarker: { borderStyle: 'dashed', backgroundColor: colors.card, opacity: 0.9 },
   safeMarker: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.safe, borderWidth: 2, borderColor: colors.bg },
 });
