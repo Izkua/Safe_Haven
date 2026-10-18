@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { nearestPlace } from '@/lib/geo';
+import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
 import { DEMO_GROUP, DEMO_MEMBERS, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
@@ -26,7 +27,15 @@ export interface AppState {
   myName: string;
   myLocation: LatLng | null;
   myStatus: MemberStatus;
+  /** Every group I'm in. */
+  groups: Group[];
+  /** The "current" group: meeting place, safe areas and routing use this one. */
+  activeGroupId: string | null;
+  /** Derived from groups + activeGroupId (never set directly). */
   group: Group | null;
+  /** Groups whose members are shown on the map. */
+  visibleGroupIds: string[];
+  /** Everyone in any of my groups except me, one entry per person. */
   members: Member[];
   route: Route | null;
   tiles: TileRegion | null;
@@ -37,7 +46,10 @@ export interface AppState {
 
 type Action =
   | { type: 'hydrate'; patch: Partial<AppState> }
-  | { type: 'set'; patch: Partial<AppState> };
+  | { type: 'set'; patch: Partial<AppState> }
+  /** Add or refresh a group. `select` also makes it current and visible on the map. */
+  | { type: 'upsertGroup'; group: Group; select?: boolean }
+  | { type: 'removeGroup'; id: string };
 
 const initial: AppState = {
   hydrated: false,
@@ -49,7 +61,10 @@ const initial: AppState = {
   myName: 'Me',
   myLocation: null,
   myStatus: 'unknown',
+  groups: [],
+  activeGroupId: null,
   group: null,
+  visibleGroupIds: [],
   members: [],
   route: null,
   tiles: null,
@@ -58,12 +73,39 @@ const initial: AppState = {
   lastSyncedAt: null,
 };
 
+/** Keeps `group`, `activeGroupId` and `visibleGroupIds` consistent with `groups`. */
+function normalize(s: AppState): AppState {
+  const group = s.groups.find((g) => g.id === s.activeGroupId) ?? s.groups[0] ?? null;
+  const ids = new Set(s.groups.map((g) => g.id));
+  // Drop people who are no longer in any of my groups (e.g. after leaving one).
+  const memberIds = new Set(allMemberIds(s.groups));
+  return {
+    ...s,
+    group,
+    activeGroupId: group?.id ?? null,
+    visibleGroupIds: s.visibleGroupIds.filter((id) => ids.has(id)),
+    members: s.members.filter((m) => memberIds.has(m.uid)),
+  };
+}
+
 function reducer(s: AppState, a: Action): AppState {
   switch (a.type) {
     case 'hydrate':
-      return { ...s, ...a.patch, hydrated: true };
+      return normalize({ ...s, ...a.patch, hydrated: true });
     case 'set':
-      return { ...s, ...a.patch };
+      return normalize({ ...s, ...a.patch });
+    case 'upsertGroup': {
+      const isNew = !s.groups.some((g) => g.id === a.group.id);
+      return normalize({
+        ...s,
+        groups: upsertGroup(s.groups, a.group),
+        activeGroupId: a.select ? a.group.id : s.activeGroupId,
+        // New groups start visible on the map.
+        visibleGroupIds: (isNew || a.select) && !s.visibleGroupIds.includes(a.group.id) ? [...s.visibleGroupIds, a.group.id] : s.visibleGroupIds,
+      });
+    }
+    case 'removeGroup':
+      return normalize({ ...s, groups: s.groups.filter((g) => g.id !== a.id), route: s.activeGroupId === a.id ? null : s.route });
   }
 }
 
@@ -76,7 +118,12 @@ export interface AppActions {
   setName(name: string): Promise<void>;
   createGroup(name: string): Promise<boolean>;
   joinGroup(code: string): Promise<boolean>;
+  /** Leaves the current group (others stay). */
   leaveGroup(): void;
+  /** Makes a group the current one. */
+  selectGroup(id: string): void;
+  /** Shows/hides a group's members on the map. */
+  toggleGroupVisible(id: string): void;
   triggerAlert(alert: HazardAlert): Promise<void>;
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
@@ -98,8 +145,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (async () => {
       let snap = await loadSnapshot();
       const savedTiles = await loadSavedTileRegion();
+      // Older snapshots stored a single group.
+      let savedGroups = snap?.groups ?? (snap?.group ? [snap.group] : []);
       // A saved demo group must never shadow the real join/create screen when Firebase is configured.
-      if (!DEMO_MODE && snap?.group?.id === 'demo-group') snap = { ...snap, group: null, members: [] };
+      if (!DEMO_MODE) savedGroups = savedGroups.filter((g) => g.id !== 'demo-group');
+      if (DEMO_MODE && !savedGroups.length) savedGroups = [DEMO_GROUP];
       // Only trust a uid that actually signed in; a stale cached uid means unauthenticated requests.
       const uid = await fb.ensureSignedIn().catch(() => null);
       dispatch({
@@ -108,8 +158,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           myUid: uid,
           myName: snap?.myName ?? 'Me',
           personalMeetingPlace: snap?.personalMeetingPlace ?? null,
-          group: snap?.group ?? (DEMO_MODE ? DEMO_GROUP : null),
-          members: snap?.members ?? (DEMO_MODE ? DEMO_MEMBERS : []),
+          groups: savedGroups,
+          activeGroupId: snap?.activeGroupId ?? snap?.group?.id ?? savedGroups[0]?.id ?? null,
+          visibleGroupIds: snap?.visibleGroupIds ?? savedGroups.map((g) => g.id),
+          members: snap?.members?.length ? snap.members : DEMO_MODE ? DEMO_MEMBERS : [],
           route: snap?.route ?? null,
           routeIsCached: !!snap?.route,
           tiles: savedTiles ?? snap?.tiles ?? null,
@@ -117,10 +169,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      // No saved group (fresh launch, cleared storage): ask Firestore if we already belong to one.
-      if (!DEMO_MODE && uid && !snap?.group) {
-        const g = await fb.findMyGroup(uid);
-        if (g && !stateRef.current.group) dispatch({ type: 'set', patch: { group: g } });
+      // Pick up groups joined on another device or lost with cleared storage.
+      if (!DEMO_MODE && uid) {
+        const remote = await fb.findMyGroups(uid);
+        for (const g of remote) dispatch({ type: 'upsertGroup', group: g });
       }
     })();
   }, []);
@@ -170,19 +222,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [publishIfDue]);
 
-  // 4. Live group + members (no-op in demo mode until [SYNC] implements firebase.ts).
-  const groupId = state.group?.id;
-  const memberKey = state.group?.memberIds.join(',') ?? '';
+  // 4. Live groups + members. One listener per group, and ONE members listener over everyone in
+  // any of my groups, so a person who shares several groups with me is only tracked (and pinned) once.
+  const groupIdsKey = state.groups.map((g) => g.id).sort().join(',');
+  const memberKey = allMemberIds(state.groups).sort().join(',');
   // Gated on myUid: listeners started before sign-in completes are rejected by the rules.
   const authedUid = state.myUid;
   useEffect(() => {
-    if (!groupId || !authedUid || DEMO_MODE) return;
-    return fb.subscribeGroup(
-      groupId,
-      (group) => set({ group, lastSyncedAt: Date.now() }),
-      () => set({ group: null, members: [], route: null }), // stale/denied group -> back to join/create
+    if (!groupIdsKey || !authedUid || DEMO_MODE) return;
+    const unsubs = groupIdsKey.split(',').map((id) =>
+      fb.subscribeGroup(
+        id,
+        (group) => {
+          dispatch({ type: 'upsertGroup', group });
+          set({ lastSyncedAt: Date.now() });
+        },
+        () => dispatch({ type: 'removeGroup', id }), // stale/denied group -> drop just that one
+      ),
     );
-  }, [groupId, authedUid, set]);
+    return () => unsubs.forEach((u) => u());
+  }, [groupIdsKey, authedUid, set]);
   useEffect(() => {
     if (!memberKey || !authedUid || DEMO_MODE) return;
     return fb.subscribeMembers(memberKey.split(','), (all) =>
@@ -215,17 +274,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       myUid: state.myUid,
       myName: state.myName,
       group: state.group,
+      groups: state.groups,
+      activeGroupId: state.activeGroupId,
+      visibleGroupIds: state.visibleGroupIds,
       members: state.members,
       route: state.route,
       tiles: state.tiles,
     });
-  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.myName, state.group, state.members, state.route, state.tiles]);
+  }, [state.hydrated, state.personalMeetingPlace, state.myUid, state.myName, state.groups, state.activeGroupId, state.visibleGroupIds, state.members, state.route, state.tiles]);
 
   const actions = useMemo<AppActions>(() => {
     const s = () => stateRef.current;
     const updateGroup = (patch: Partial<Group>) => {
       const g = s().group;
-      if (g) set({ group: { ...g, ...patch } });
+      if (g) dispatch({ type: 'upsertGroup', group: { ...g, ...patch } });
     };
     const routeTo = async (target: Place) => {
       const isCurrent = beginRouteRequest();
@@ -301,18 +363,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.createGroup(uid, name).catch(() => null);
-        if (g) set({ group: g });
+        if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
       async joinGroup(code) {
         const uid = s().myUid;
         if (!uid) return false;
         const g = await fb.joinGroup(uid, code.trim().toUpperCase()).catch(() => null);
-        if (g) set({ group: g });
+        if (g) dispatch({ type: 'upsertGroup', group: g, select: true });
         return !!g;
       },
       leaveGroup() {
-        set({ group: null, members: [], route: null });
+        const { group, myUid } = s();
+        if (!group) return;
+        if (myUid && !DEMO_MODE) void fb.leaveGroup(myUid, group.id);
+        dispatch({ type: 'removeGroup', id: group.id });
+      },
+      selectGroup(id) {
+        set({ activeGroupId: id });
+      },
+      toggleGroupVisible(id) {
+        const v = s().visibleGroupIds;
+        set({ visibleGroupIds: v.includes(id) ? v.filter((x) => x !== id) : [...v, id] });
       },
       async triggerAlert(alert) {
         set({ activeAlert: alert });

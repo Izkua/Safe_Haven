@@ -1,14 +1,16 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
+import { GroupFilter } from '@/components/GroupFilter';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { formatAge, formatDistance } from '@/lib/geo';
+import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { UW_CENTER } from '@/mocks/demo';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, memberColor } from '@/theme';
@@ -29,7 +31,7 @@ function showRouteInfo(to: { latitude: number; longitude: number }) {
 
 export default function MapScreen() {
   const { state, actions } = useApp();
-  const { group, personalMeetingPlace, members, route, myLocation, isOnline, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { group, groups, visibleGroupIds, personalMeetingPlace, members, route, myLocation, isOnline, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const mapRef = useRef<MapView>(null);
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
@@ -37,6 +39,10 @@ export default function MapScreen() {
   }, [activeAlert?.id]);
 
   const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  // Members of the checked groups, one pin per person even if they share several groups with me.
+  const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
+  // Color by position across ALL my groups (current group first) so a person keeps one color.
+  const colorOrder = useMemo(() => allMemberIds(group ? [group, ...groups] : groups), [group, groups]);
   const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
 
 
@@ -69,10 +75,10 @@ export default function MapScreen() {
           <Marker key={p.id} coordinate={p.coord} title={p.name} description={p.type} pinColor={colors.shelter} onCalloutPress={() => actions.routeTo(p)} />
         ))}
 
-        {members.map((m) => {
+        {shownMembers.map((m) => {
           if (!m.location) return null;
           const age = m.locationTs ? Date.now() - m.locationTs : Infinity;
-          const color = memberColor(m.uid, group?.memberIds ?? []);
+          const color = memberColor(m.uid, colorOrder);
           return (
             <Marker
               // Custom marker views aren't reliably redrawn in place: re-key on what the pin shows so a
@@ -95,6 +101,7 @@ export default function MapScreen() {
         {!isOnline && <Text style={styles.demo}>Meeting place locked while offline</Text>}
         {!isOnline && <Text style={styles.demo}>Apple Maps: cached areas only · coverage may be unavailable</Text>}
         {DEMO_MODE && <Text style={styles.demo}>DEMO MODE · no Firebase config</Text>}
+        <GroupFilter groups={groups} visibleIds={visibleGroupIds} onToggle={actions.toggleGroupVisible} />
         {route && (
           <View style={styles.routeCard}>
             <View style={styles.routeHeader}>

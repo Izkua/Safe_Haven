@@ -1,6 +1,7 @@
 // [OWNER: UI] Group screen: my status, members, create/join.
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { useApp } from '@/state/AppContext';
 import { colors, statusColor } from '@/theme';
@@ -8,7 +9,10 @@ import type { Member } from '@/types';
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, members, myLocation, myStatus, isOnline } = state;
+  const { group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
+  // Everyone else in the CURRENT group (state.members spans all my groups).
+  const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
+  const [adding, setAdding] = useState(false);
   const [code, setCode] = useState('');
   const [newName, setNewName] = useState('');
   const [placeName, setPlaceName] = useState('');
@@ -21,6 +25,11 @@ export default function GroupScreen() {
     const ok = await fn();
     setBusy(false);
     if (!ok) setMsg(fail);
+    else {
+      setAdding(false);
+      setCode('');
+      setNewName('');
+    }
   };
   const setHere = () => {
     if (!isOnline) return Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
@@ -36,7 +45,35 @@ export default function GroupScreen() {
         <StatusButton label="Need help" active={myStatus === 'need_help'} color={colors.danger} onPress={() => actions.setStatus('need_help')} />
       </View>
 
-      {group ? (
+      {groups.length > 0 && (
+        <View>
+          <Text style={styles.label}>Your groups · tap to make current</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 6 }}>
+            {groups.map((g) => {
+              const current = !adding && g.id === group?.id;
+              return (
+                <Pressable
+                  key={g.id}
+                  onPress={() => { actions.selectGroup(g.id); setAdding(false); }}
+                  style={[styles.chip, current && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: current }}
+                >
+                  {current && <Ionicons name="checkmark-circle" size={16} color="#fff" />}
+                  <Text style={[styles.chipText, current && { color: '#fff' }]}>{g.name}</Text>
+                  <Text style={[styles.chipCount, current && { color: '#fff' }]}>{g.memberIds.length}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable onPress={() => { setAdding(true); setMsg(null); }} style={[styles.chip, adding && styles.chipActive]}>
+              <Ionicons name="add" size={16} color={adding ? '#fff' : colors.text} />
+              <Text style={[styles.chipText, adding && { color: '#fff' }]}>Add group</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      )}
+
+      {group && !adding ? (
         <>
           <Text style={styles.h1}>{group.name}</Text>
           <Text style={styles.muted}>Invite code: <Text style={styles.code}>{group.inviteCode}</Text></Text>
@@ -54,18 +91,23 @@ export default function GroupScreen() {
             renderItem={({ item }) => <MemberRow m={item} me={myLocation} />}
             ListEmptyComponent={<Text style={styles.muted}>No other members yet. Share the invite code.</Text>}
           />
-          <Pressable onPress={() => Alert.alert('Leave group?', 'You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}>
-            <Text style={[styles.muted, { textAlign: 'center', marginTop: 12, textDecorationLine: 'underline' }]}>Leave group / join another</Text>
+          <Pressable onPress={() => Alert.alert(`Leave ${group.name}?`, 'Your other groups stay. You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}>
+            <Text style={[styles.muted, { textAlign: 'center', marginTop: 12, textDecorationLine: 'underline' }]}>Leave this group</Text>
           </Pressable>
         </>
       ) : (
         <View style={{ gap: 10, marginTop: 16 }}>
-          <Text style={styles.h1}>Join or create a group</Text>
+          <Text style={styles.h1}>{groups.length ? 'Add another group' : 'Join or create a group'}</Text>
           <TextInput style={styles.input} placeholder="Invite code" placeholderTextColor={colors.muted} autoCapitalize="characters" value={code} onChangeText={setCode} />
           <Pressable style={styles.btn} disabled={busy} onPress={() => run(() => actions.joinGroup(code), 'Could not join. Check the code and your connection.')}><Text style={styles.btnText}>{busy ? 'Working…' : 'Join'}</Text></Pressable>
           <TextInput style={styles.input} placeholder="New group name" placeholderTextColor={colors.muted} value={newName} onChangeText={setNewName} />
           <Pressable style={styles.btn} disabled={busy} onPress={() => run(() => actions.createGroup(newName || 'My Family'), 'Could not create the group. Check your connection.')}><Text style={styles.btnText}>Create</Text></Pressable>
           {msg && <Text style={{ color: colors.danger }}>{msg}</Text>}
+          {adding && group && (
+            <Pressable onPress={() => setAdding(false)}>
+              <Text style={[styles.muted, { textAlign: 'center', textDecorationLine: 'underline' }]}>Cancel</Text>
+            </Pressable>
+          )}
         </View>
       )}
     </View>
@@ -109,4 +151,9 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.card, color: colors.text, borderRadius: 10, padding: 12 },
   btn: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '700' },
+  label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.card, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
+  chipActive: { backgroundColor: colors.primary },
+  chipText: { color: colors.text, fontWeight: '700' },
+  chipCount: { color: colors.muted, fontWeight: '600', fontSize: 12 },
 });

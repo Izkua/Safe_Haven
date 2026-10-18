@@ -86,7 +86,11 @@ export interface OfflineSnapshot {
   version: 1;
   myUid: string | null;
   myName: string;
+  /** The current group (kept for snapshots saved before multi-group support). */
   group: Group | null;
+  groups?: Group[];
+  activeGroupId?: string | null;
+  visibleGroupIds?: string[];
   members: Member[];
   route: Route | null;
   tiles: TileRegion | null;
