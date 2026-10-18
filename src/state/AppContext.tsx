@@ -82,7 +82,7 @@ const initial: AppState = {
   myUid: null,
   myName: 'Me',
   myLocation: null,
-  myStatus: 'unknown',
+  myStatus: 'safe', // [UI] Default is "I'm safe"; tap "I need help" to change it.
   groups: [],
   activeGroupId: null,
   group: null,
@@ -172,6 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginRouteRequest = useRef(createRouteRequestGuard()).current;
   const lastPublished = useRef<{ coord: LatLng; ts: number } | null>(null);
   const seenDrills = useRef(new Set<string>());
+  const myStatusLoaded = useRef(false);
   // [UI] Last meeting point seen per group. The first snapshot of a group only records it (no
   // notification on launch); later changes by someone else notify.
   const seenMeetings = useRef(new Map<string, string>());
@@ -316,9 +317,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [groupIdsKey, authedUid, set]);
   useEffect(() => {
     if (!memberKey || !authedUid || DEMO_MODE) return;
-    return fb.subscribeMembers(memberKey.split(','), (all) =>
-      set({ members: all.filter((m) => m.uid !== authedUid), lastSyncedAt: Date.now() }),
-    );
+    return fb.subscribeMembers(memberKey.split(','), (all) => {
+      // [UI] Once per launch, show the status I last saved (e.g. "Need help"), so my screen matches
+      // what my group sees instead of the default.
+      const me = !myStatusLoaded.current ? all.find((m) => m.uid === authedUid) : undefined;
+      if (me) myStatusLoaded.current = true;
+      set({ members: all.filter((m) => m.uid !== authedUid), lastSyncedAt: Date.now(), ...(me ? { myStatus: me.status } : {}) });
+    });
   }, [memberKey, authedUid, set]);
 
   // 5. Alert polling while online.

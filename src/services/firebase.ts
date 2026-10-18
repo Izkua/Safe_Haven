@@ -152,7 +152,8 @@ function toMember(uid: string, d: DocumentData): Member {
     name: d.name ?? 'Unnamed',
     location: hasLoc ? { latitude: l.latitude, longitude: l.longitude } : null,
     locationTs: typeof d.locationTs === 'number' ? d.locationTs : null,
-    status: d.status === 'safe' || d.status === 'need_help' ? d.status : 'unknown',
+    // [UI] No status saved yet counts as safe (the app's default); only "Need help" is ever set otherwise.
+    status: d.status === 'need_help' ? 'need_help' : 'safe',
   };
 }
 
