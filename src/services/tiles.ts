@@ -1,6 +1,6 @@
 // Offline raster XYZ tiles. Configure a source licensed for offline downloads.
 import * as FileSystem from 'expo-file-system/legacy';
-import { tilesForRegion } from '@/lib/geo';
+import { distanceM, lngLatToTile, tilesForRegion } from '@/lib/geo';
 import type { LatLng, TileRegion } from '@/types';
 
 export const TILE_DIR = `${FileSystem.documentDirectory}tiles`;
@@ -44,13 +44,62 @@ export function estimateTileCount(center: LatLng, radiusKm = DEFAULT_REGION.radi
   return planTiles([center], radiusKm).length;
 }
 
-export async function loadSavedTileRegion(): Promise<TileRegion | null> {
-  try {
-    const region = JSON.parse(await FileSystem.readAsStringAsync(MANIFEST)) as TileRegion;
-    if (!region.pathTemplate || !region.centers?.length || !region.downloadedAt || !region.attribution) return null;
-    const folder = region.pathTemplate.slice(0, region.pathTemplate.indexOf('/{z}'));
-    return (await FileSystem.getInfoAsync(folder)).exists ? region : null;
-  } catch { return null; }
+/** react-native-maps UrlTile caches files as z/x/y, without .png. */
+export function tileCacheDirectory(region: TileRegion): string {
+  const template = region.pathTemplate ?? TILE_PATH_TEMPLATE;
+  const marker = template.indexOf('/{z}');
+  if (marker < 0) throw new Error('Invalid saved-map path.');
+  return template.slice(0, marker);
+}
+
+/** Rebase old iOS sandbox paths and migrate legacy .png tiles to the native cache layout. */
+export async function prepareOfflineTileCache(region: TileRegion): Promise<TileRegion> {
+  const oldTemplate = region.pathTemplate ?? TILE_PATH_TEMPLATE;
+  const suffix = oldTemplate.split('/tiles/')[1];
+  if (!suffix || !/^(source-[0-9a-f]+\/)?\{z\}\/\{x\}\/\{y\}(\.png)?$/.test(suffix)) throw new Error('Saved-map path is invalid. Prepare the map again.');
+  const template = `${TILE_DIR}/${suffix.replace(/\.png$/, '')}`;
+  const centers = region.centers ?? [region.center];
+  if (!centers.length || centers.length > 100 || region.radiusKm <= 0 || region.radiusKm > 3 ||
+      !Number.isInteger(region.minZoom) || !Number.isInteger(region.maxZoom) || region.minZoom < 0 || region.maxZoom > 20 || region.maxZoom < region.minZoom) throw new Error('Saved-map coverage is invalid. Prepare the map again.');
+  const expected = new Map<string, { z: number; x: number; y: number }>();
+  for (const center of centers) {
+    if (!Number.isFinite(center.latitude) || Math.abs(center.latitude) > 80 || !Number.isFinite(center.longitude) || Math.abs(center.longitude) > 179) throw new Error('Saved-map location is invalid.');
+    for (const t of tilesForRegion(center, region.radiusKm, region.minZoom, region.maxZoom)) expected.set(`${t.z}/${t.x}/${t.y}`, t);
+  }
+  if (!expected.size || expected.size > MAX_TILES) throw new Error('Saved-map area is invalid.');
+  const entries = [...expected.values()];
+  for (let start = 0; start < entries.length; start += 16) {
+    await Promise.all(entries.slice(start, start + 16).map(async ({ z, x, y }) => {
+      const path = template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+      const info = await FileSystem.getInfoAsync(path);
+      if (info.exists && !info.isDirectory && info.size > 0) return;
+      const legacy = await FileSystem.getInfoAsync(`${path}.png`);
+      if (!legacy.exists || legacy.isDirectory || legacy.size <= 0) throw new Error('Some map files are missing. Reconnect and prepare the map again.');
+      await FileSystem.moveAsync({ from: `${path}.png`, to: path });
+    }));
+  }
+  return { ...region, centers, pathTemplate: template, tileCount: expected.size, cacheFormat: 'native-v1' };
+}
+
+let loadingSavedRegion: Promise<TileRegion | null> | null = null;
+export function loadSavedTileRegion(): Promise<TileRegion | null> {
+  if (!loadingSavedRegion) {
+    loadingSavedRegion = (async () => {
+      try {
+        const region = JSON.parse(await FileSystem.readAsStringAsync(MANIFEST)) as TileRegion;
+        if (!region.pathTemplate || !region.downloadedAt || !region.attribution) return null;
+        return await prepareOfflineTileCache(region);
+      } catch { return null; }
+    })().finally(() => { loadingSavedRegion = null; });
+  }
+  return loadingSavedRegion;
+}
+
+/** Coverage at the highest saved zoom (closer views scale these same images). */
+export function isInsideSavedMap(region: TileRegion, coordinate: LatLng): boolean {
+  const tile = lngLatToTile(coordinate, region.maxZoom);
+  return (region.centers ?? [region.center]).some((center) =>
+    tilesForRegion(center, region.radiusKm, region.maxZoom, region.maxZoom).some((t) => t.x === tile.x && t.y === tile.y));
 }
 
 /** Single call covers both locations; reused tiles are not downloaded again. */
@@ -58,12 +107,17 @@ export async function downloadRegion(
   center: LatLng,
   onProgress: (done: number, total: number) => void,
   meetingPlace?: LatLng,
+  routePoints: LatLng[] = [],
 ): Promise<TileRegion> {
   const error = tileConfigurationError();
   if (error) throw new Error(error);
   if (busy) throw new Error('A map download is already running.');
   busy = true;
   const centers = meetingPlace ? [center, meetingPlace] : [center];
+  // A modest corridor around route vertices; avoid repeating almost-identical regions.
+  for (const point of routePoints) {
+    if (centers.every((c) => distanceM(c, point) > 750)) centers.push(point);
+  }
   // Namespace by the full source so changing styles/providers never mixes tiles.
   let hash = 2166136261;
   for (let i = 0; i < URL_TEMPLATE.length; i++) hash = Math.imul(hash ^ URL_TEMPLATE.charCodeAt(i), 16777619);
@@ -84,7 +138,7 @@ export async function downloadRegion(
       while (!failure && cursor < tiles.length) {
         const { z, x, y } = tiles[cursor++];
         const folder = `${dir}/${z}/${x}`;
-        const path = `${folder}/${y}.png`;
+        const path = `${folder}/${y}`;
         let temporary: string | null = null;
         try {
           const info = await FileSystem.getInfoAsync(path);
@@ -125,7 +179,7 @@ export async function downloadRegion(
     if (failure) throw failure;
     const region: TileRegion = {
       center, centers, ...DEFAULT_REGION, tileCount: tiles.length, downloadedAt: Date.now(),
-      pathTemplate: `${dir}/{z}/{x}/{y}.png`, attribution: ATTRIBUTION, attributionUrl: ATTRIBUTION_URL,
+      pathTemplate: `${dir}/{z}/{x}/{y}`, cacheFormat: 'native-v1', attribution: ATTRIBUTION, attributionUrl: ATTRIBUTION_URL,
     };
     // Publish metadata only after every tile succeeds. Partial downloads can be resumed.
     await FileSystem.writeAsStringAsync(`${MANIFEST}.part`, JSON.stringify(region));

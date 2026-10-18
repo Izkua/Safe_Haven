@@ -18,6 +18,7 @@ jest.mock('firebase/auth', () => ({
   signInAnonymously: jest.fn(),
 }));
 jest.mock('firebase/firestore', () => ({
+  arrayRemove: (...a: unknown[]) => ({ arrayRemove: a }),
   arrayUnion: (...a: unknown[]) => ({ arrayUnion: a }),
   collection: (_db: unknown, path: string) => ({ path }),
   doc: (a: unknown, ...rest: unknown[]) => ({ id: 'new-id', path: rest.join('/'), a }),
@@ -118,5 +119,29 @@ describe('groups', () => {
     const offline = fb.findMyGroup('u1');
     await jest.advanceTimersByTimeAsync(60_000);
     await expect(offline).resolves.toBeNull();
+  });
+
+  test('findMyGroups returns every group, and [] when offline', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: 'g1', data: () => ({ name: 'Family', memberIds: ['u1'] }) },
+        { id: 'g2', data: () => ({ name: 'Roommates', memberIds: ['u1', 'u3'] }) },
+      ],
+    });
+    const gs = await fb.findMyGroups('u1');
+    expect(gs.map((g) => g.id)).toEqual(['g1', 'g2']);
+
+    mockGetDocs.mockImplementation(hang);
+    const offline = fb.findMyGroups('u1');
+    await jest.advanceTimersByTimeAsync(60_000);
+    await expect(offline).resolves.toEqual([]);
+  });
+
+  test('leaveGroup removes me from the group and my profile, without awaiting the server', async () => {
+    mockUpdateDoc.mockImplementation(hang);
+    mockSetDoc.mockImplementation(hang);
+    await fb.leaveGroup('u1', 'g1');
+    expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g1' }), { memberIds: { arrayRemove: ['u1'] } });
+    expect(mockSetDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'users/u1' }), { groupIds: { arrayRemove: ['g1'] } }, { merge: true });
   });
 });

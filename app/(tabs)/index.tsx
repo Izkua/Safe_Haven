@@ -1,38 +1,73 @@
-// [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
+// [OWNER: MAP/OFFLINE] Main map. Hold 1 s, slide to a group, let go = set that group's meeting place.
 // Design: map + rounded bottom sheet: where you are going, then real labelled buttons.
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Linking, PanResponder, Platform, Pressable, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
-import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
+import { Alert, Animated, KeyboardAvoidingView, Linking, Modal, PanResponder, Pressable, StyleSheet, Text, TextInput, useColorScheme, useWindowDimensions, View } from 'react-native';
+import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { DangerBanner } from '@/components/DangerBanner';
+import { GroupFilter } from '@/components/GroupFilter';
+import { HoldGroupPicker, type PickOption } from '@/components/HoldGroupPicker';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
+import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { UW_CENTER } from '@/mocks/demo';
-import { downloadRegion, localTilePath, ONLINE_TILE_URL, planTiles, TILE_ATTRIBUTION, tileConfigurationError } from '@/services/tiles';
+import { geocodeAddress } from '@/services/location';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, mapOverlayColors, memberColor, radius } from '@/theme';
 import type { LatLng, Place } from '@/types';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
-// Android's Google base map often renders blank in Expo Go (Play services / API key issues).
-// With a tile key configured, draw configured raster tiles instead — same provider as the offline cache.
-const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
   const overlay = mapOverlayColors(useColorScheme()); // map overlays need plain strings, not dynamic colors
-  const { group, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
+  const { group, groups, visibleGroupIds, personalMeetingPlace, members, route, myLocation, isOnline, tiles, activeAlert, routingLoading, routingMessage, routeIsCached } = state;
   const needHelp = members.filter((m) => m.status === 'need_help');
   const mapRef = useRef<MapView>(null);
-  const downloadBusy = useRef(false);
-  const [tileProgress, setTileProgress] = useState<string | null>(null);
-  // A place picked on the map but not confirmed yet: a long-press (new meeting point) or a tapped safe area.
-  const [pending, setPending] = useState<{ kind: 'meeting'; coord: LatLng } | { kind: 'place'; place: Place } | null>(null);
+  // A safe area tapped on the map but not confirmed yet.
+  const [pending, setPending] = useState<Place | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  // Two ways to set a meeting point, both ending in the same naming box:
+  //   1. hold a spot on the map (map frozen while choosing, preview pin), coord already known;
+  //   2. "Set meeting point" in the panel: type an address, or use where I am now (coord null).
+  const [mapLocked, setMapLocked] = useState(false);
+  const [pendingPin, setPendingPin] = useState<LatLng | null>(null);
+  const [naming, setNaming] = useState<{ coord: LatLng | null; option: PickOption; name: string; address: string } | null>(null);
+  const [finding, setFinding] = useState(false);
+  const pickOptions: PickOption[] = useMemo(
+    () => (groups.length ? groups.map((g) => ({ id: g.id, label: g.id === group?.id ? `${g.name} (current)` : g.name })) : [{ id: null, label: 'Just me' }]),
+    [groups, group?.id],
+  );
+  const lockedOffline = () => {
+    if (isOnline) return false;
+    Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.');
+    return true;
+  };
+  const startNaming = (coord: LatLng | null, option: PickOption) =>
+    setNaming({ coord, option, name: coord ? 'Meeting place' : '', address: '' });
+  const saveMeeting = async (coord: LatLng, address?: string) => {
+    if (!naming) return;
+    await actions.setMeetingPlace(coord, naming.name.trim() || address || 'Meeting place', naming.option.id ?? undefined, address);
+    setNaming(null);
+  };
+  const saveFromAddress = async () => {
+    const typed = naming?.address.trim();
+    if (!typed) return Alert.alert('Enter an address', 'For example "4060 George Washington Ln NE, Seattle".');
+    setFinding(true);
+    const coord = await geocodeAddress(typed);
+    setFinding(false);
+    if (!coord) return Alert.alert('Couldn’t find that address', 'Check the spelling, add the city, or hold a spot on the map instead.');
+    await saveMeeting(coord, typed);
+  };
+  const saveHere = () => {
+    if (!myLocation) return Alert.alert('No location yet', 'Wait for GPS, type an address, or hold a spot on the map.');
+    void saveMeeting(myLocation);
+  };
 
   // ---- Swipeable panel: two positions ----
   //   open:      sized to its content (no empty space), every action
@@ -83,6 +118,10 @@ export default function MapScreen() {
   }, [activeAlert?.id]);
 
   const meetingPlace = group ? group.meetingPlace : personalMeetingPlace;
+  // Members of the checked groups, one pin per person even if they share several groups with me.
+  const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
+  // Color by position across ALL my groups (current group first) so a person keeps one color.
+  const colorOrder = useMemo(() => allMemberIds(group ? [group, ...groups] : groups), [group, groups]);
   const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
 
   // What the sheet points at: the active route's target, else the meeting place, else the nearest safe area.
@@ -97,33 +136,6 @@ export default function MapScreen() {
   const minutes = route && !route.isStraightLine ? route.durationS / 60 : meters !== null ? meters / WALK_MPS / 60 : null;
   const walk = minutes !== null ? `${Math.max(1, Math.round(minutes))} min walk` : null;
 
-  const onDownloadTiles = () => {
-    if (downloadBusy.current) return;
-    if (!isOnline) { Alert.alert('No connection', 'Connect to the internet before saving a map.'); return; }
-    const configError = tileConfigurationError();
-    if (configError) { Alert.alert('Offline map setup', configError); return; }
-    const meeting = meetingPlace?.coord;
-    let n: number;
-    try { n = planTiles(meeting ? [center, meeting] : [center]).length; }
-    catch (e) { Alert.alert('Cannot save area', (e as Error).message); return; }
-    Alert.alert('Download offline map?', `${n} tiles around you${meeting ? ' and the meeting place' : ''}, about ${Math.ceil(n * 30 / 1024)} MB (estimate). Covers 1.5 km around each point at zoom 12–16.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Download', onPress: async () => {
-        if (downloadBusy.current) return;
-        downloadBusy.current = true;
-        setTileProgress('Starting…');
-        try {
-          const region = await downloadRegion(center, (d, t) => setTileProgress(`${d}/${t}`), meeting);
-          actions.setTiles(region);
-          Alert.alert('Map saved', 'Use Compass to navigate without signal. Only the downloaded areas and zoom levels are available offline.');
-        } catch (e) {
-          Alert.alert('Map not fully saved', e instanceof Error ? e.message : 'Please retry. Completed tiles will be reused.');
-        } finally { downloadBusy.current = false; setTileProgress(null); }
-      } },
-    ]);
-  };
-
-  const busyLabel = tileProgress ? `Saving map ${tileProgress}` : null;
   // The route already on screen goes to the current target, so the main button has nothing to do
   // (it stays greyed) until a new place is picked. A failed walking route can still be retried.
   // Someone else in the group moved the meeting point after this route was drawn.
@@ -134,63 +146,70 @@ export default function MapScreen() {
   const canRetry = routeShown && route!.isStraightLine && isOnline;
   const goDisabled = !target || (routeShown && !canRetry);
   const goLabel = routingLoading
-    ? "Finding walking route…"
+    ? 'Finding walking route…'
     : !target
-      ? "Set a meeting point first"
+      ? 'Set a meeting point first'
       : meetingMoved
-        ? "Route to new meeting point"
+        ? 'Route to new meeting point'
         : canRetry
-        ? "Retry walking route"
-        : routeShown
-          ? "Route shown"
-          : target.label === "Nearest safe area"
-            ? "Go to nearest safe area"
-            : "Go to meeting point";
+          ? 'Retry walking route'
+          : routeShown
+            ? 'Route shown'
+            : target.label === 'Nearest safe area'
+              ? 'Go to nearest safe area'
+              : 'Go to meeting point';
   const summary = target
-    ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ""}${walk ? ` (about ${walk})` : ""}`
-    : "Long-press the map to drop a meeting point.";
+    ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}`
+    : 'Hold a spot on the map to drop a meeting point.';
 
   // Pending selection: what it is, how far, and what confirming will do.
-  const pendingCoord = pending ? (pending.kind === 'meeting' ? pending.coord : pending.place.coord) : null;
-  const pendingMeters = pendingCoord && myLocation ? distanceM(myLocation, pendingCoord) : null;
-  const pendingTitle = pending?.kind === 'meeting' ? 'New meeting point' : pending?.place.name ?? '';
-  const pendingSummary = `${pendingMeters !== null ? `${formatDistance(pendingMeters)} away. ` : ''}${
-    pending?.kind === 'meeting' ? 'Your group will see this as the meeting point.' : 'Safe area.'
-  }`;
+  const pendingMeters = pending && myLocation ? distanceM(myLocation, pending.coord) : null;
+  const pendingTitle = pending?.name ?? '';
+  const pendingSummary = `${pendingMeters !== null ? `${formatDistance(pendingMeters)} away. ` : ''}Safe area.`;
   const confirmPending = async () => {
     if (!pending) return;
     setConfirming(true);
     try {
-      if (pending.kind === 'meeting') await actions.setMeetingPlace(pending.coord);
-      else await actions.routeTo(pending.place);
+      await actions.routeTo(pending);
     } finally {
       setConfirming(false);
       setPending(null);
     }
   };
-  const attribution = !isOnline ? (tiles?.attribution ?? TILE_ATTRIBUTION) : TILE_ATTRIBUTION;
+
+  // Each group has its own meeting place: show the current group's plus every checked group's.
+  const meetingMarkers = groups.length
+    ? groups
+        .filter((g) => g.meetingPlace && (g.id === group?.id || visibleGroupIds.includes(g.id)))
+        .map((g) => ({ key: `meet-${g.id}`, place: g.meetingPlace!, description: `${g.name} meeting place${g.meetingPlace!.address ? ` · ${g.meetingPlace!.address}` : ''}`, current: g.id === group?.id }))
+    : meetingPlace
+      ? [{ key: 'meet-personal', place: meetingPlace, description: 'Personal meeting place', current: true }]
+      : [];
 
   return (
     <View style={styles.fill}>
+      <HoldGroupPicker
+        options={pickOptions}
+        getCoordinate={async (pt) => (mapRef.current ? mapRef.current.coordinateForPoint(pt) : null)}
+        canStart={() => !lockedOffline()}
+        onLockMap={setMapLocked}
+        onPendingChange={setPendingPin}
+        onPick={(coord, option) => startNaming(coord, option)}
+      >
       <MapView
+        key="apple-map"
         ref={mapRef}
         style={styles.fill}
-        minZoomLevel={!isOnline && tiles ? tiles.minZoom : undefined}
-        maxZoomLevel={!isOnline && tiles ? tiles.maxZoom : undefined}
+        scrollEnabled={!mapLocked}
+        zoomEnabled={!mapLocked}
+        rotateEnabled={!mapLocked}
+        pitchEnabled={!mapLocked}
         showsUserLocation
         showsCompass
-        mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
+        mapType="standard"
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
         mapPadding={{ top: 0, left: 0, right: 0, bottom: open ? fullH : closedH }}
-        onLongPress={(e) => {
-          if (!isOnline) { Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting place.'); return; }
-          // Only select it; nothing changes until the user confirms in the sheet.
-          setPending({ kind: 'meeting', coord: e.nativeEvent.coordinate });
-        }}
       >
-        {USE_TILE_BASEMAP && isOnline && <UrlTile urlTemplate={ONLINE_TILE_URL} tileSize={256} maximumZ={19} />}
-        {!isOnline && tiles && <LocalTile key={tiles.downloadedAt} pathTemplate={localTilePath(tiles)} tileSize={256} />}
-
         {activeAlert?.areas.map((ring, i) => (
           <Polygon key={`area-${i}`} coordinates={ring} fillColor="rgba(179,38,30,0.14)" strokeColor={overlay.danger} strokeWidth={2} />
         ))}
@@ -221,28 +240,28 @@ export default function MapScreen() {
           />
         )}
 
-        {meetingPlace && (
-          <Marker coordinate={meetingPlace.coord} title={meetingPlace.name} description={group ? 'Group meeting place' : 'Personal meeting place'} anchor={{ x: 0.5, y: 0.5 }}>
+        {meetingMarkers.map((m) => (
+          <Marker key={m.key} coordinate={m.place.coord} title={m.place.name} description={m.description} anchor={{ x: 0.5, y: 0.5 }} opacity={m.current ? 1 : 0.7}>
             <View style={styles.meetingMarker} />
           </Marker>
-        )}
+        ))}
 
-        {pending?.kind === 'meeting' && (
-          <Marker coordinate={pending.coord} title="New meeting point" description="Not saved yet" anchor={{ x: 0.5, y: 0.5 }}>
+        {pendingPin && (
+          <Marker coordinate={pendingPin} title="New meeting point" description="Not saved yet" anchor={{ x: 0.5, y: 0.5 }}>
             <View style={[styles.meetingMarker, styles.pendingMarker]} />
           </Marker>
         )}
 
         {group?.safeAreas.map((p) => (
-          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => setPending({ kind: 'place', place: p })}>
+          <Marker key={p.id} coordinate={p.coord} title={p.name} description="Safe area" anchor={{ x: 0.5, y: 0.5 }} onPress={() => setPending(p)}>
             <View style={styles.safeMarker} />
           </Marker>
         ))}
 
-        {members.map((m) => {
+        {shownMembers.map((m) => {
           if (!m.location) return null;
           const age = m.locationTs ? Date.now() - m.locationTs : Infinity;
-          const color = memberColor(m.uid, group?.memberIds ?? []);
+          const color = memberColor(m.uid, colorOrder);
           const help = m.status === 'need_help';
           return (
             <Marker
@@ -260,6 +279,54 @@ export default function MapScreen() {
           );
         })}
       </MapView>
+      </HoldGroupPicker>
+
+      <Modal visible={!!naming} transparent animationType="fade" onRequestClose={() => setNaming(null)}>
+        <KeyboardAvoidingView style={styles.modalBg} behavior="padding">
+          <View style={styles.modalCard}>
+            <Text style={styles.targetName}>{naming?.coord ? 'Name this meeting point' : 'Set meeting point'}</Text>
+            <Text style={styles.summary}>For {naming?.option.label.replace(' (current)', '')}</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={naming?.name ?? ''}
+              onChangeText={(name) => setNaming((n) => (n ? { ...n, name } : n))}
+              autoFocus={!!naming?.coord}
+              selectTextOnFocus
+              placeholder="Name, e.g. Front lawn"
+              placeholderTextColor={colors.muted}
+              onSubmitEditing={() => naming?.coord && void saveMeeting(naming.coord)}
+              returnKeyType="done"
+              accessibilityLabel="Meeting point name"
+            />
+            {naming?.coord ? (
+              <BigButton label="Save meeting point" icon="flag" onPress={() => naming.coord && void saveMeeting(naming.coord)} />
+            ) : (
+              <>
+                <TextInput
+                  style={styles.modalInput}
+                  value={naming?.address ?? ''}
+                  onChangeText={(address) => setNaming((n) => (n ? { ...n, address } : n))}
+                  autoFocus
+                  editable={!finding}
+                  autoCorrect={false}
+                  placeholder="Address, e.g. 4060 George Washington Ln NE, Seattle"
+                  placeholderTextColor={colors.muted}
+                  onSubmitEditing={() => void saveFromAddress()}
+                  returnKeyType="search"
+                  accessibilityLabel="Meeting point address"
+                />
+                {naming?.address.trim() ? (
+                  <BigButton label="Use this address" icon="search" loading={finding} onPress={() => void saveFromAddress()} />
+                ) : (
+                  <BigButton label="Use where I am now" icon="locate" onPress={saveHere} />
+                )}
+                <Text style={styles.summary}>Or close this and hold a spot on the map for 1 second.</Text>
+              </>
+            )}
+            <BigButton label="Cancel" variant="plain" disabled={finding} onPress={() => setNaming(null)} />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         {/* Live danger first: it must stay visible after the alert screen closes. */}
@@ -280,10 +347,11 @@ export default function MapScreen() {
           />
         )}
         <OfflineBanner />
-        {!isOnline && tiles && <Text style={styles.notice}>Using the map saved {formatAge(Date.now() - tiles.downloadedAt)}. Meeting point can’t change offline.</Text>}
-        {!isOnline && !tiles && <Text style={styles.notice}>Meeting point can’t change while offline.</Text>}
+        {!isOnline && tiles?.downloadedAt && <Text style={styles.notice}>Using the area saved {formatAge(Date.now() - tiles.downloadedAt)}. Meeting point can’t change offline.</Text>}
+        {!isOnline && !tiles?.downloadedAt && <Text style={styles.notice}>Apple Maps shows cached areas only. Meeting point can’t change while offline.</Text>}
         {routingMessage && <Text style={styles.notice}>{routingMessage}</Text>}
         {DEMO_MODE && <Text style={styles.demo}>Demo mode</Text>}
+        <GroupFilter groups={groups} visibleIds={visibleGroupIds} onToggle={actions.toggleGroupVisible} />
       </SafeAreaView>
 
       <Animated.View
@@ -319,12 +387,7 @@ export default function MapScreen() {
         >
           {pending ? (
             <>
-              <BigButton
-                label={pending.kind === 'meeting' ? 'Set as meeting point' : `Go to ${pending.place.name}`}
-                icon={pending.kind === 'meeting' ? 'flag' : 'navigate'}
-                loading={confirming}
-                onPress={() => void confirmPending()}
-              />
+              <BigButton label={`Go to ${pending.name}`} icon="navigate" loading={confirming} onPress={() => void confirmPending()} />
               <BigButton label="Cancel" variant="plain" disabled={confirming} onPress={() => setPending(null)} />
             </>
           ) : (
@@ -334,32 +397,43 @@ export default function MapScreen() {
                 icon={routeShown && !canRetry ? 'checkmark' : 'navigate'}
                 loading={routingLoading}
                 disabled={goDisabled}
-                accessibilityHint={routeShown && !canRetry ? 'Long-press the map to pick a new meeting point' : undefined}
+                accessibilityHint={routeShown && !canRetry ? 'Hold a spot on the map to pick a new meeting point' : undefined}
                 onPress={() => void actions.routeToBestTarget()}
+              />
+              <BigButton
+                label={meetingPlace ? 'Change meeting point' : 'Set meeting point'}
+                icon="flag-outline"
+                variant="secondary"
+                accessibilityHint="Type an address or use where you are. You can also hold a spot on the map."
+                onPress={() => {
+                  if (lockedOffline()) return;
+                  const current = pickOptions.find((o) => o.id === (group?.id ?? null)) ?? pickOptions[0];
+                  startNaming(null, current);
+                }}
               />
               <View style={styles.row}>
                 <BigButton label="Compass" icon="compass-outline" variant="secondary" style={styles.half} onPress={() => router.push('/compass')} />
                 <BigButton
-                  label={busyLabel ?? (tiles ? 'Map saved' : 'Save map')}
-                  icon={tiles ? 'checkmark-circle-outline' : 'cloud-download-outline'}
+                  label={tiles?.downloadedAt ? 'Offline ready' : 'Get offline-ready'}
+                  icon={tiles?.downloadedAt ? 'checkmark-circle-outline' : 'cloud-download-outline'}
                   variant="secondary"
                   style={styles.half}
-                  accessibilityHint="Downloads the map around you for use without signal"
-                  onPress={onDownloadTiles}
+                  accessibilityHint="Checks and saves what you need to use the map without signal"
+                  onPress={() => router.push('/offline-readiness')}
                 />
               </View>
               <BigButton label="Practice a drill" icon="warning-outline" variant="alarm" accessibilityHint="Practice a disaster. Your group gets the drill too." onPress={() => router.push('/simulate')} />
             </>
           )}
 
-          {(route || USE_TILE_BASEMAP || (!isOnline && tiles)) && (
+          {route && (
             <Text style={styles.fine}>
-              {route ? (route.isStraightLine ? 'Straight-line direction. ' : 'Walking route. ') : ''}
-              {route && !route.isStraightLine && (routeIsCached || !isOnline) ? `Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}. ` : ''}
-              {route ? 'Routes don’t avoid hazards. ' : ''}
+              {route.isStraightLine ? 'Straight-line direction. ' : 'Walking route. '}
+              {!route.isStraightLine && (routeIsCached || !isOnline) ? `Saved ${formatAge(Math.max(0, Date.now() - route.fetchedAt))}. ` : ''}
+              {'Routes don’t avoid hazards. '}
               <Text style={styles.link} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>© OpenStreetMap</Text>
-              {route ? <>{' · '}<Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text></> : null}
-              {(USE_TILE_BASEMAP || (!isOnline && tiles)) && !!attribution ? <>{' · '}<Text style={styles.link} onPress={() => { const url = tiles?.attributionUrl ?? process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL; if (url) void Linking.openURL(url); }}>{attribution}</Text></> : null}
+              {' · '}
+              <Text style={styles.link} onPress={() => Linking.openURL('https://routing.openstreetmap.de/about.html')}>FOSSGIS</Text>
             </Text>
           )}
         </View>
@@ -385,6 +459,10 @@ const styles = StyleSheet.create({
   half: { flex: 1 },
   fine: { fontSize: 12, lineHeight: 16, color: colors.muted, paddingHorizontal: 4 },
   link: { textDecorationLine: 'underline' },
+
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: colors.bg, borderRadius: 20, padding: 20, gap: 10 },
+  modalInput: { minHeight: 56, backgroundColor: colors.card, color: colors.text, borderRadius: radius, paddingHorizontal: 16, fontSize: 17 },
 
   meetingMarker: { width: 22, height: 22, borderRadius: 4, backgroundColor: colors.bg, borderWidth: 3, borderColor: colors.text, transform: [{ rotate: '45deg' }] },
   pendingMarker: { borderStyle: 'dashed', backgroundColor: colors.card, opacity: 0.9 },

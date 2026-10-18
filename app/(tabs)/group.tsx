@@ -1,5 +1,6 @@
 // [OWNER: UI] Group screen: how am I, where is everyone, and a few clear actions.
 // Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
+// You can be in several groups: chips at the top pick the current one, or add another.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRef, useState, type ComponentProps } from 'react';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
@@ -8,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
+import { geocodeAddress } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, minTarget, radius, statusColor } from '@/theme';
 import type { LatLng, Member } from '@/types';
@@ -17,9 +19,15 @@ const order = { need_help: 0, unknown: 1, safe: 2 } as const;
 
 export default function GroupScreen() {
   const { state, actions } = useApp();
-  const { group, members, myLocation, myStatus, isOnline } = state;
+  const { group, groups, members: allMembers, myLocation, myStatus, isOnline } = state;
+  // Everyone else in the CURRENT group (state.members spans all my groups).
+  const members = group ? allMembers.filter((m) => group.memberIds.includes(m.uid)) : [];
   const [mode, setMode] = useState<'none' | 'join' | 'create' | 'meeting'>('none');
+  // Adding another group while already in one: show the join/create screen instead of the group.
+  const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
+  const [address, setAddress] = useState('');
+  const [finding, setFinding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -38,6 +46,7 @@ export default function GroupScreen() {
   const open = (m: typeof mode) => {
     setMode(m);
     setText('');
+    setAddress('');
     setMsg(null);
   };
   const run = async (fn: () => Promise<boolean>, fail: string) => {
@@ -45,27 +54,82 @@ export default function GroupScreen() {
     setMsg(null);
     const ok = await fn();
     setBusy(false);
-    if (ok) setMode('none');
-    else setMsg(fail);
+    if (ok) {
+      setMode('none');
+      setAdding(false);
+    } else setMsg(fail);
   };
   const setHere = () => {
     if (!isOnline) return Alert.alert('You’re offline', 'Reconnect to change the meeting point.');
-    if (!myLocation) return Alert.alert('No location yet', 'Wait for GPS, or long-press the map instead.');
-    actions.setMeetingPlace(myLocation, text.trim() || 'Meeting point');
+    if (!myLocation) return Alert.alert('No location yet', 'Wait for GPS, type an address, or hold a spot on the map.');
+    actions.setMeetingPlace(myLocation, text.trim() || 'Meeting point', group?.id);
+    setMode('none');
+  };
+  const setFromAddress = async () => {
+    if (!isOnline) return Alert.alert('You’re offline', 'Reconnect to change the meeting point.');
+    const typed = address.trim();
+    if (!typed) return Alert.alert('Enter an address', 'For example "4060 George Washington Ln NE, Seattle".');
+    setFinding(true);
+    const coord = await geocodeAddress(typed);
+    setFinding(false);
+    if (!coord) return Alert.alert('Couldn’t find that address', 'Check the spelling, add the city, or hold a spot on the map instead.');
+    await actions.setMeetingPlace(coord, text.trim() || typed, group?.id, typed);
     setMode('none');
   };
   const setStatus = (s: 'safe' | 'need_help') => {
     tap();
     actions.setStatus(s);
   };
+  const pickGroup = (id: string) => {
+    tap();
+    actions.selectGroup(id);
+    setAdding(false);
+    open('none');
+  };
 
-  // ---- Not in a group yet ----
-  if (!group) {
+  // Group switcher: one chip per group, plus "Add group".
+  const chips = groups.length > 0 && (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      {groups.map((g) => {
+        const current = !adding && g.id === group?.id;
+        return (
+          <Pressable
+            key={g.id}
+            onPress={() => pickGroup(g.id)}
+            style={({ pressed }) => [styles.chip, current && styles.chipOn, { opacity: pressed ? 0.7 : 1 }]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: current }}
+            accessibilityLabel={`${g.name}, ${g.memberIds.length} ${g.memberIds.length === 1 ? 'person' : 'people'}`}
+          >
+            <Text style={[styles.chipText, current && styles.chipTextOn]}>{g.name}</Text>
+            <Text style={[styles.chipCount, current && styles.chipTextOn]}>{g.memberIds.length}</Text>
+          </Pressable>
+        );
+      })}
+      <Pressable
+        onPress={() => {
+          tap();
+          setAdding(true);
+          open('none');
+        }}
+        style={({ pressed }) => [styles.chip, adding && styles.chipOn, { opacity: pressed ? 0.7 : 1 }]}
+        accessibilityRole="button"
+        accessibilityState={{ selected: adding }}
+      >
+        <Ionicons name="add" size={18} color={adding ? colors.onPrimary : colors.text} />
+        <Text style={[styles.chipText, adding && styles.chipTextOn]}>Add group</Text>
+      </Pressable>
+    </ScrollView>
+  );
+
+  // ---- Not in a group yet, or adding another ----
+  if (!group || adding) {
     return (
       <SafeAreaView edges={['top']} style={styles.screen}>
         <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title} accessibilityRole="header">Your group</Text>
+          {chips}
+          <Text style={styles.title} accessibilityRole="header">{group ? 'Add another group' : 'Your group'}</Text>
           <Text style={styles.lead}>Join your family or friends so you can see each other and meet up in an emergency.</Text>
 
           {mode === 'join' ? (
@@ -97,6 +161,7 @@ export default function GroupScreen() {
             <View style={styles.form}>
               <BigButton label="Join with a code" icon="key-outline" onPress={() => open('join')} />
               <BigButton label="Start a new group" icon="add" variant="secondary" onPress={() => open('create')} />
+              {group && <BigButton label="Cancel" variant="plain" onPress={() => setAdding(false)} />}
             </View>
           )}
           {msg && <Text style={styles.error} accessibilityRole="alert">{msg}</Text>}
@@ -109,14 +174,16 @@ export default function GroupScreen() {
   // ---- In a group ----
   const sorted = [...members].sort((a, b) => order[a.status] - order[b.status] || (b.locationTs ?? 0) - (a.locationTs ?? 0));
   const count = members.length + 1;
+  const meet = group.meetingPlace;
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView ref={scrollRef} contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
+        {chips}
         <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
         <Text style={styles.lead}>
-          {count} {count === 1 ? 'person' : 'people'}. {group.meetingPlace ? `Meet at ${group.meetingPlace.name}.` : 'No meeting point yet.'}
+          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meet.address ? ` (${meet.address})` : ''}.` : 'No meeting point yet.'}
         </Text>
 
         <Text style={styles.heading}>How are you?</Text>
@@ -175,8 +242,26 @@ export default function GroupScreen() {
           <View style={[styles.form, { marginTop: 28 }]}>
             <Text style={styles.fieldLabel}>Meeting point name</Text>
             <TextInput style={styles.input} placeholder="Front lawn" placeholderTextColor={colors.muted} autoFocus value={text} onChangeText={setText} accessibilityLabel="Meeting point name" onFocus={scrollToInput} />
-            <BigButton label="Use where I am now" icon="locate" onPress={setHere} />
-            <Text style={styles.hint}>Or long-press anywhere on the map.</Text>
+            <Text style={styles.fieldLabel}>Address (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="4060 George Washington Ln NE, Seattle"
+              placeholderTextColor={colors.muted}
+              editable={!finding}
+              value={address}
+              onChangeText={setAddress}
+              autoCorrect={false}
+              returnKeyType="search"
+              onSubmitEditing={() => void setFromAddress()}
+              onFocus={scrollToInput}
+              accessibilityLabel="Meeting point address"
+            />
+            {address.trim() ? (
+              <BigButton label="Use this address" icon="search" loading={finding} onPress={() => void setFromAddress()} />
+            ) : (
+              <BigButton label="Use where I am now" icon="locate" onPress={setHere} />
+            )}
+            <Text style={styles.hint}>Or on the Map tab: hold a spot for 1 second, slide to a group, and let go.</Text>
             <BigButton label="Cancel" variant="plain" onPress={() => open('none')} />
           </View>
         ) : (
@@ -200,7 +285,7 @@ export default function GroupScreen() {
               label="Leave group"
               variant="plain"
               tone="danger"
-              onPress={() => Alert.alert('Leave this group?', 'You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}
+              onPress={() => Alert.alert(`Leave ${group.name}?`, 'Your other groups stay. You can rejoin with the invite code.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Leave', style: 'destructive', onPress: actions.leaveGroup }])}
             />
           </View>
         )}
@@ -272,6 +357,12 @@ const styles = StyleSheet.create({
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
   heading: { marginTop: 28, marginBottom: 10, fontSize: 20, lineHeight: 25, fontWeight: '600', color: colors.text },
   body: { fontSize: 17, lineHeight: 24, color: colors.muted },
+  chips: { gap: 8, paddingBottom: 16 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.card },
+  chipOn: { backgroundColor: colors.primary },
+  chipText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  chipCount: { fontSize: 13, fontWeight: '600', color: colors.muted, fontVariant: ['tabular-nums'] },
+  chipTextOn: { color: colors.onPrimary },
   statusRow: { flexDirection: 'row', gap: 10 },
   statusBtn: { flex: 1, minHeight: 88, borderRadius: radius, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
   statusText: { fontSize: 17, fontWeight: '600' },

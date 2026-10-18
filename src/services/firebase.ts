@@ -9,6 +9,7 @@ import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 // @ts-ignore getReactNativePersistence is only in firebase's RN typings
 import { getAuth, getReactNativePersistence, initializeAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import {
+  arrayRemove,
   arrayUnion,
   collection,
   doc,
@@ -234,6 +235,29 @@ export async function findMyGroup(uid: string): Promise<Group | null> {
     console.warn('findMyGroup failed:', errMsg(e));
     return null;
   }
+}
+
+/** Every group `uid` belongs to (up to 20). Empty if none or no signal. */
+export async function findMyGroups(uid: string): Promise<Group[]> {
+  const firestore = getDb();
+  if (!firestore) return [];
+  try {
+    const snap = await withTimeout(
+      getDocs(query(collection(firestore, 'groups'), where('memberIds', 'array-contains', uid), limit(20))),
+    );
+    return snap.docs.map((d) => toGroup(d.id, d.data()));
+  } catch (e) {
+    console.warn('findMyGroups failed:', errMsg(e));
+    return [];
+  }
+}
+
+/** Removes `uid` from the group (allowed by the rules: members may update their group). Fire-and-forget. */
+export async function leaveGroup(uid: string, groupId: string): Promise<void> {
+  const firestore = getDb();
+  if (!firestore) return;
+  fire('leaveGroup', updateDoc(doc(firestore, 'groups', groupId), { memberIds: arrayRemove(uid) }));
+  fire('leaveGroup:groupIds', setDoc(doc(firestore, 'users', uid), { groupIds: arrayRemove(groupId) }, { merge: true }));
 }
 
 // ---------------------------------------------------------------------------

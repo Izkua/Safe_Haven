@@ -38,7 +38,7 @@ process.env.EXPO_PUBLIC_TILE_URL_TEMPLATE = 'https://example.com/{z}/{x}/{y}.png
 process.env.EXPO_PUBLIC_TILE_ATTRIBUTION = 'Test map attribution';
 process.env.EXPO_PUBLIC_TILE_ATTRIBUTION_URL = 'https://example.com/credits';
 // Load after environment setup; the Expo bundler substitutes these at app startup.
-const { downloadRegion, loadSavedTileRegion, planTiles, localTilePath } = require('./tiles') as typeof import('./tiles');
+const { downloadRegion, loadSavedTileRegion, planTiles, localTilePath, tileCacheDirectory, isInsideSavedMap } = require('./tiles') as typeof import('./tiles');
 const center = { latitude: 47.65, longitude: -122.31 };
 beforeEach(() => { mockFiles.clear(); mockFail = false; mockActive = 0; mockPeak = 0; mockDownload.mockClear(); });
 
@@ -70,7 +70,9 @@ test('saved metadata restores after download independently of app snapshot', asy
   const folder = saved.pathTemplate!.split('/{z}')[0];
   mockFiles.set(folder, { size: 100 });
   expect(await loadSavedTileRegion()).toEqual(saved);
-  mockFiles.delete(folder);
+  const first = planTiles([center])[0];
+  const path = saved.pathTemplate!.replace('{z}', String(first.z)).replace('{x}', String(first.x)).replace('{y}', String(first.y));
+  mockFiles.delete(path);
   expect(await loadSavedTileRegion()).toBeNull();
 });
 test('invalid coordinates are rejected', () => {
@@ -79,4 +81,28 @@ test('invalid coordinates are rejected', () => {
 
 test('native tile path strips file URI prefix', () => {
  expect(localTilePath({ center, radiusKm: 1, minZoom: 12, maxZoom: 16, tileCount: 1, downloadedAt: 1, pathTemplate: 'file:///documents/{z}/{x}/{y}.png' })).toBe('/documents/{z}/{x}/{y}.png');
+});
+
+test('legacy PNG files migrate to extensionless native cache without redownloading', async () => {
+ const saved = await downloadRegion(center, () => {});
+ const count = mockDownload.mock.calls.length;
+ const folder = tileCacheDirectory(saved);
+ for (const [path, file] of [...mockFiles]) {
+  if (path.startsWith(folder + '/')) { mockFiles.set(path + '.png', file); mockFiles.delete(path); }
+ }
+ const legacy = { ...saved, pathTemplate: saved.pathTemplate + '.png' };
+ mockFiles.set('file:///documents/tiles/saved-region.json', { size: 1, text: JSON.stringify(legacy) });
+ expect(await loadSavedTileRegion()).toMatchObject({ pathTemplate: saved.pathTemplate, cacheFormat: 'native-v1' });
+ expect(mockDownload).toHaveBeenCalledTimes(count);
+ expect([...mockFiles.keys()].some(p => p.startsWith(folder + '/') && p.endsWith('.png'))).toBe(false);
+});
+test('old sandbox absolute paths resolve under the current document directory', async () => {
+ const saved = await downloadRegion(center, () => {});
+ mockFiles.set('file:///documents/tiles/saved-region.json', { size: 1, text: JSON.stringify({ ...saved, pathTemplate: saved.pathTemplate!.replace('file:///documents', 'file:///old-app-container/Documents') }) });
+ expect((await loadSavedTileRegion())?.pathTemplate).toBe(saved.pathTemplate);
+});
+test('coverage distinguishes saved area from panning outside it', async () => {
+ const saved = await downloadRegion(center, () => {});
+ expect(isInsideSavedMap(saved, center)).toBe(true);
+ expect(isInsideSavedMap(saved, { latitude: 0, longitude: 0 })).toBe(false);
 });

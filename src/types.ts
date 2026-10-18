@@ -21,6 +21,8 @@ export interface Place {
   name: string;
   coord: LatLng;
   type: PlaceType;
+  /** Street address, when the place was set by typing one in. */
+  address?: string;
 }
 
 export interface Group {
@@ -80,6 +82,7 @@ export interface HazardAlert {
 }
 
 export interface TileRegion {
+  cacheFormat?: 'native-v1';
   centers?: LatLng[];
   pathTemplate?: string;
   attribution?: string;
@@ -98,7 +101,11 @@ export interface OfflineSnapshot {
   version: 1;
   myUid: string | null;
   myName: string;
+  /** The current group (kept for snapshots saved before multi-group support). */
   group: Group | null;
+  groups?: Group[];
+  activeGroupId?: string | null;
+  visibleGroupIds?: string[];
   members: Member[];
   route: Route | null;
   tiles: TileRegion | null;
