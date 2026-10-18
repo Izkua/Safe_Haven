@@ -174,6 +174,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // [UI] Last meeting point seen per group. The first snapshot of a group only records it (no
   // notification on launch); later changes by someone else notify.
   const seenMeetings = useRef(new Map<string, string>());
+  // Lets the group listener (set up before `actions`) re-route when the meeting point moves.
+  const actionsRef = useRef<AppActions | null>(null);
 
   // 1. Hydrate from disk first so offline launch shows the last-known world.
   useEffect(() => {
@@ -283,6 +285,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
               alerts.notify(`${group.name}: meeting point moved`, `${who} set it to ${mp.name}${mp.address ? ` (${mp.address})` : ''}.`);
             } else {
               alerts.notify(`${group.name}: meeting point removed`, 'Your group no longer has a meeting point. Check the Group tab.');
+            }
+            // If I'm walking to this group's meeting point, follow it: re-route to the new spot, or
+            // drop the line when it was removed. (Offline, routeTo falls back to a straight line.)
+            const { activeGroupId, route } = stateRef.current;
+            if (group.id === activeGroupId && route?.targetId === 'meet') {
+              if (mp) actionsRef.current?.routeTo(mp).catch(() => {});
+              else set({ route: null });
             }
           }
           // [ALERTS] A drill someone else started: show it here too, once, while it's still recent.
@@ -510,6 +519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [set, beginRouteRequest]);
 
+  actionsRef.current = actions;
   return <Ctx.Provider value={{ state, actions }}>{children}</Ctx.Provider>;
 }
 
