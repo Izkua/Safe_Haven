@@ -1,15 +1,14 @@
-// [OWNER: UI · STRETCH] First aid + disaster guides as tappable topics, plus app settings.
+// [OWNER: UI · STRETCH] First aid + disaster guides as tappable topics. The gear opens Settings.
 // Everything here is bundled in the app, so it works with no signal.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useState, type ComponentProps } from 'react';
+import { router } from 'expo-router';
+import { useState, type ComponentProps } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
-import { useOnboarding } from '@/components/OnboardingGate';
-import { loadAppearancePref, setAppearancePref, type AppearancePref } from '@/lib/appearance';
 import { tap } from '@/lib/haptics';
 import { HAZARD_TYPES, HAZARDS } from '@/lib/hazards';
-import { colors, minTarget, radius } from '@/theme';
+import { colors, radius } from '@/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 type Topic = { id: string; title: string; icon: IconName; steps: string[] };
@@ -23,35 +22,29 @@ const FIRST_AID: Topic[] = [
 // The same step-by-step guidance the alert screen shows, readable any time.
 const DISASTERS: Topic[] = HAZARD_TYPES.map((h) => ({ id: h, title: HAZARDS[h].label, icon: HAZARDS[h].icon, steps: HAZARDS[h].steps }));
 
-const APPEARANCE: { value: AppearancePref; label: string }[] = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'system', label: 'Match phone' },
-];
-
 export default function InfoScreen() {
-  const { resetOnboarding } = useOnboarding();
-  const [pref, setPref] = useState<AppearancePref | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadAppearancePref().then(setPref);
-  }, []);
 
   const toggle = (id: string) => {
     tap();
     setOpen((cur) => (cur === id ? null : id));
   };
-  const choose = (p: AppearancePref) => {
-    tap();
-    setPref(p);
-    void setAppearancePref(p);
-  };
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.pad}>
-        <Text style={styles.title} accessibilityRole="header">First aid</Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, styles.flex]} accessibilityRole="header">First aid</Text>
+          <Pressable
+            onPress={() => { tap(); router.push('/settings'); }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            style={({ pressed }) => [styles.gear, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Ionicons name="settings-outline" size={24} color={colors.text} />
+          </Pressable>
+        </View>
         <Text style={styles.lead}>Works without signal. Tap a topic to see the steps.</Text>
 
         <BigButton
@@ -72,32 +65,6 @@ export default function InfoScreen() {
         <View style={styles.list}>
           {DISASTERS.map((t) => <TopicButton key={t.id} topic={t} open={open === t.id} onPress={() => toggle(t.id)} />)}
         </View>
-
-        <Text style={styles.heading} accessibilityRole="header">Settings</Text>
-        <Text style={styles.fieldLabel}>Appearance</Text>
-        <View style={styles.segment} accessibilityRole="radiogroup">
-          {APPEARANCE.map((o) => {
-            const on = pref === o.value;
-            return (
-              <Pressable
-                key={o.value}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                onPress={() => choose(o.value)}
-                style={({ pressed }) => [styles.segBtn, on && styles.segOn, { opacity: pressed ? 0.7 : 1 }]}
-              >
-                <Text style={[styles.segText, on && styles.segTextOn]}>{o.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* Dev builds only: re-run onboarding without reinstalling Expo Go. */}
-        {__DEV__ && (
-          <View style={{ marginTop: 24 }}>
-            <BigButton label="Reset onboarding (dev)" variant="plain" onPress={resetOnboarding} />
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -142,6 +109,9 @@ function TopicButton({ topic, open, onPress }: { topic: Topic; open: boolean; on
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   pad: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  flex: { flex: 1 },
+  gear: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', color: colors.text },
   lead: { marginTop: 4, fontSize: 17, lineHeight: 24, color: colors.muted },
   call: { marginTop: 20, minHeight: 64 },
@@ -156,10 +126,4 @@ const styles = StyleSheet.create({
   step: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   stepNum: { width: 26, fontSize: 18, lineHeight: 26, fontWeight: '700', color: colors.text },
   stepText: { flex: 1, fontSize: 18, lineHeight: 26, color: colors.text },
-  fieldLabel: { marginBottom: 8, fontSize: 15, color: colors.muted },
-  segment: { flexDirection: 'row', gap: 6, backgroundColor: colors.card, borderRadius: radius, padding: 4 },
-  segBtn: { flex: 1, minHeight: minTarget - 8, borderRadius: radius - 4, alignItems: 'center', justifyContent: 'center' },
-  segOn: { backgroundColor: colors.primary },
-  segText: { fontSize: 15, fontWeight: '600', color: colors.text },
-  segTextOn: { color: colors.onPrimary },
 });

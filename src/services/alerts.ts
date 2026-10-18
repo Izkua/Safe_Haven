@@ -37,6 +37,16 @@ try {
 
 export const notificationsAvailable = () => Notifications !== null;
 
+/** [UI] Are notifications allowed right now? Read-only (never shows the prompt). Never throws. */
+export async function hasNotificationPermission(): Promise<boolean> {
+  if (!Notifications) return false;
+  try {
+    return (await Notifications.getPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!Notifications) return false;
   const { granted } = await Notifications.requestPermissionsAsync();

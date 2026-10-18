@@ -13,6 +13,16 @@ export async function requestForegroundPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+/** [UI] Is location allowed right now? Read-only (never shows the prompt). Never throws. */
+export async function hasForegroundPermission(): Promise<boolean> {
+  try {
+    const { status } = await Location.getForegroundPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 export async function startForegroundWatch(onUpdate: (c: LatLng) => void): Promise<() => void> {
   const sub = await Location.watchPositionAsync(
     { accuracy: Location.Accuracy.Balanced, distanceInterval: 10, timeInterval: 10_000 },
