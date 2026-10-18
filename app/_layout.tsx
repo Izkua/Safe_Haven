@@ -42,10 +42,20 @@ function RootStack() {
           name="offline-readiness"
           options={{
             title: 'Offline Readiness',
-            headerBackTitle: 'Map',
+            headerBackTitle: 'Back',
             // [UI] Themed back button (the iOS 26 glass one ignores light / dark mode).
-            headerLeft: () => <HeaderBack label="Map" color={header.text} background={header.card} />,
-            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="Map" color={header.text} background={header.card} />, hidesSharedBackground: true }],
+            headerLeft: () => <HeaderBack label="Back" color={header.text} background={header.card} />,
+            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="Back" color={header.text} background={header.card} />, hidesSharedBackground: true }],
+          }}
+        />
+        <Stack.Screen
+          name="settings"
+          options={{
+            title: 'Settings',
+            headerBackTitle: 'First aid',
+            // [UI] Themed back button (the iOS 26 glass one ignores light / dark mode).
+            headerLeft: () => <HeaderBack label="First aid" color={header.text} background={header.card} />,
+            unstable_headerLeftItems: () => [{ type: 'custom', element: <HeaderBack label="First aid" color={header.text} background={header.card} />, hidesSharedBackground: true }],
           }}
         />
         <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
