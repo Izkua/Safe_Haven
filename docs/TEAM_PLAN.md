@@ -13,7 +13,7 @@ The plan has one section per member, written for a 24-hour hack. Hours count fro
 | 🚨 **ALERTS** | _name_ | disaster feeds, notifications, safe areas, EAS build |
 | 🎨 **UI** | _name_ | onboarding, screens, first aid, demo + pitch |
 
-Search the code for `TODO [MAP]`, `TODO [SYNC]`, `TODO [ALERTS]` or `TODO [UI]` to find your stubs. Each one already has its final signature and hints. With no `.env`, the app runs in **DEMO MODE** on mock data around UW (`src/mocks/demo.ts`).
+Search the code for `npTODO [MAP]`, `TODO [SYNC]`, `TODO [ALERTS]` or `TODO [UI]` to find your stubs. Each one already has its final signature and hints. With no `.env`, the app runs in **DEMO MODE** on mock data around UW (`src/mocks/demo.ts`).
 
 ---
 

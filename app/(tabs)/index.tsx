@@ -1,19 +1,22 @@
 // [OWNER: MAP/OFFLINE] Main map. Long-press = set meeting place.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import MapView, { LocalTile, Marker, Polygon, Polyline } from 'react-native-maps';
+import { Alert, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import MapView, { LocalTile, Marker, Polygon, Polyline, UrlTile } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionButton } from '@/components/ActionButton';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { formatAge, formatDistance } from '@/lib/geo';
 import { UW_CENTER } from '@/mocks/demo';
 import { makeSimulatedAlert } from '@/services/alerts';
-import { downloadRegion, estimateTileCount, TILE_PATH_TEMPLATE } from '@/services/tiles';
+import { downloadRegion, estimateTileCount, ONLINE_TILE_URL, TILE_ATTRIBUTION, TILE_PATH_TEMPLATE } from '@/services/tiles';
 import { DEMO_MODE, useApp } from '@/state/AppContext';
 import { colors, statusColor } from '@/theme';
 
 const STALE_MS = 15 * 60_000;
+// Android's Google base map often renders blank in Expo Go (Play services / API key issues).
+// With a tile key configured, draw MapTiler tiles instead — same provider as the offline cache.
+const USE_TILE_BASEMAP = Platform.OS === 'android' && !!ONLINE_TILE_URL;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
@@ -50,9 +53,11 @@ export default function MapScreen() {
         style={styles.fill}
         showsUserLocation
         showsCompass
+        mapType={USE_TILE_BASEMAP ? 'none' : 'standard'}
         initialRegion={{ ...center, latitudeDelta: 0.03, longitudeDelta: 0.03 }}
         onLongPress={(e) => actions.setMeetingPlace(e.nativeEvent.coordinate)}
       >
+        {USE_TILE_BASEMAP && isOnline && <UrlTile urlTemplate={ONLINE_TILE_URL} tileSize={256} maximumZ={19} />}
         {!isOnline && tiles && <LocalTile pathTemplate={TILE_PATH_TEMPLATE} tileSize={256} />}
 
         {activeAlert?.areas.map((ring, i) => (
@@ -106,6 +111,8 @@ export default function MapScreen() {
         {routingMessage && <Text style={styles.demo}>{routingMessage}</Text>}
       </SafeAreaView>
 
+      {(USE_TILE_BASEMAP || (!isOnline && tiles)) && <Text style={styles.attribution}>{TILE_ATTRIBUTION}</Text>}
+
       <View style={styles.actions}>
         <ActionButton icon="navigate" label={routingLoading ? "Routing…" : "Go"} onPress={() => { if (!routingLoading) void actions.routeToBestTarget(); }} />
         <ActionButton icon="compass" label="Compass" onPress={() => router.push('/compass')} />
@@ -123,5 +130,6 @@ const styles = StyleSheet.create({
   routeCard: { backgroundColor: colors.card, borderRadius: 12, padding: 12 },
   routeTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
   routeSub: { color: colors.muted, marginTop: 2 },
+  attribution: { position: 'absolute', bottom: 84, right: 12, fontSize: 10, color: '#333', backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 4, borderRadius: 4, overflow: 'hidden' },
   actions: { position: 'absolute', bottom: 16, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
 });

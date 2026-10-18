@@ -1,5 +1,5 @@
 // [OWNER: ALERTS] Disaster feeds + local notifications.
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
 import { distanceM, pointInPolygon } from '@/lib/geo';
 import type { HazardAlert, LatLng } from '@/types';
 
@@ -8,21 +8,35 @@ export { makeSimulatedAlert } from '@/mocks/demo';
 export const POLL_INTERVAL_MS = 5 * 60_000;
 export const QUAKE_RADIUS_KM = 150;
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Loaded defensively: Expo Go on Android lacks some expo-notifications native modules
+// (ExpoTopicSubscriptionModule) and a top-level import crashes the whole app. Without it,
+// alerts still open the in-app alert screen; only the system notification is skipped.
+let Notifications: typeof NotificationsModule | null = null;
+try {
+  Notifications = require('expo-notifications') as typeof NotificationsModule;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  Notifications = null;
+  console.warn('Notifications unavailable on this build; alerts will show in-app only.', e);
+}
+
+export const notificationsAvailable = () => Notifications !== null;
 
 export async function requestNotificationPermission(): Promise<boolean> {
+  if (!Notifications) return false;
   const { granted } = await Notifications.requestPermissionsAsync();
   return granted;
 }
 
 export async function notifyAlert(alert: HazardAlert): Promise<void> {
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     content: { title: alert.title, body: alert.instruction ?? alert.description, data: { alertId: alert.id } },
     trigger: null,

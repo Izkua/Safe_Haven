@@ -8,6 +8,10 @@ export const TILE_DIR = `${FileSystem.documentDirectory}tiles`;
 export const TILE_PATH_TEMPLATE = `${TILE_DIR}/{z}/{x}/{y}.png`;
 const URL_TEMPLATE = process.env.EXPO_PUBLIC_TILE_URL_TEMPLATE ?? '';
 
+/** Tile URL for live (online) base-map tiles, or '' if no real key is configured. */
+export const ONLINE_TILE_URL = URL_TEMPLATE && !URL_TEMPLATE.includes('YOUR_KEY') ? URL_TEMPLATE : '';
+export const TILE_ATTRIBUTION = '© MapTiler © OpenStreetMap contributors';
+
 export const DEFAULT_REGION = { radiusKm: 3, minZoom: 12, maxZoom: 16 };
 
 export function estimateTileCount(center: LatLng, radiusKm = DEFAULT_REGION.radiusKm): number {
