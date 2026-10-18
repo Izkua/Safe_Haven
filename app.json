@@ -10,11 +10,7 @@
       "bundleIdentifier": "com.dubhacks.safehaven",
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "SafeHaven shows your position on the map and shares it with your group during emergencies.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "In emergency mode SafeHaven keeps sharing your location with your group in the background.",
-        "UIBackgroundModes": [
-          "location"
-        ]
+        "NSLocationWhenInUseUsageDescription": "SafeHaven shows your position on the map and shares it with your group during emergencies."
       }
     },
     "android": {
@@ -29,8 +25,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SafeHaven shows your position on the map and shares it with your group during emergencies.",
-          "isIosBackgroundLocationEnabled": true
+          "locationWhenInUsePermission": "SafeHaven shows your position on the map and shares it with your group during emergencies."
         }
       ],
       "expo-notifications",

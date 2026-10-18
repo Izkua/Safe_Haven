@@ -2,7 +2,7 @@
 import { StyleSheet, Text, type ColorValue, type TextStyle } from 'react-native';
 import { colors } from '@/theme';
 
-export function splitDistance(m: number): { value: string; unit: string } {
+function splitDistance(m: number): { value: string; unit: string } {
   if (m < 1000) return { value: String(Math.round(m)), unit: 'm' };
   return { value: (m / 1000).toFixed(m < 10_000 ? 1 : 0), unit: 'km' };
 }

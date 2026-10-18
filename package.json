@@ -27,7 +27,6 @@
     "expo-notifications": "~57.0.23",
     "expo-router": "~57.0.28",
     "expo-status-bar": "~57.0.1",
-    "expo-task-manager": "~57.0.21",
     "firebase": "^12.0.0",
     "react": "19.2.3",
     "react-native": "0.86.3",
