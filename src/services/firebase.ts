@@ -137,6 +137,8 @@ function toGroup(id: string, d: DocumentData): Group {
     safeAreas: d.safeAreas ?? [],
     drill: d.drill ?? null,
     disasterHavens: d.disasterHavens ?? {},
+    usualMeetingPlace: d.usualMeetingPlace ?? null,
+    activeHaven: d.activeHaven ?? null,
   };
 }
 
@@ -340,7 +342,7 @@ export async function publishStatus(uid: string, status: MemberStatus): Promise<
 export async function setMeetingPlace(groupId: string, place: Place | null): Promise<void> {
   const firestore = getDb();
   if (!firestore) return;
-  fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));
+  fire('setMeetingPlace', updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place, usualMeetingPlace: place, activeHaven: null }));
 }
 
 export async function addSafeArea(groupId: string, place: Place): Promise<void> {
@@ -406,11 +408,12 @@ export async function saveDisasterHaven(groupId: string, hazard: HazardType, pla
     return true;
   } catch { return false; }
 }
-export async function adoptDisasterHaven(groupId: string, place: Place): Promise<boolean> {
+/** Confirm all destination fields together, so peers can always restore the usual point. */
+export async function switchMeetingDestination(groupId: string, patch: Pick<Group, 'meetingPlace' | 'usualMeetingPlace' | 'activeHaven'>): Promise<boolean> {
   const firestore = getDb();
   if (!firestore) return false;
   try {
-    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));
+    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), patch));
     return true;
   } catch { return false; }
 }

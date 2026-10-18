@@ -41,6 +41,9 @@ export interface Group {
   drill?: GroupDrill | null;
   /** Prepared choices; saving one does not move the active meeting point. */
   disasterHavens?: Partial<Record<HazardType, Place>>;
+  /** Retained while a disaster haven is the active shared destination. */
+  usualMeetingPlace?: Place | null;
+  activeHaven?: HazardType | null;
 }
 
 /** An announcement to a group (stored at groups/{groupId}/announcements/{id}). */

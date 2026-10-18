@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, Text } from 'react-native';
+import { MeetingOptions } from '@/components/MeetingOptions';
 import { BigButton } from '@/components/BigButton';
 import { HavenGroups } from '@/components/HavenGroups';
 import { HAZARDS } from '@/lib/hazards';
@@ -20,10 +21,11 @@ export default function DisasterHavenScreen() {
     <Text style={{ fontSize: 17, color: colors.muted }}>Choose which group this saved location belongs to.</Text>
     <HavenGroups groups={state.groups} selected={group?.id ?? ''} onSelect={select} />
     <Text style={{ fontSize: 20, color: colors.text }}>{place ? `${group?.name}: ${place.name}` : 'No haven saved for this group and disaster.'}</Text>
-    {place && <Text style={{ color: colors.muted }}>{place.coord.latitude.toFixed(5)}, {place.coord.longitude.toFixed(5)}</Text>}
+    {place && <Text style={{ color: colors.muted }}>{place.address ?? `${place.coord.latitude.toFixed(5)}, ${place.coord.longitude.toFixed(5)}`}</Text>}
     <BigButton label="Save a meeting point" icon="map-outline" disabled={!group || !state.isOnline}
       onPress={() => { if (group) router.push({ pathname: '/haven-map', params: { hazard, groupId: group.id } }); }} />
     <Text style={{ fontSize: 16, lineHeight: 23, color: colors.muted }}>{!group ? 'Create or join a group first.' : !state.isOnline ? 'Reconnect to save or change a haven.' : 'Tap the map to choose a location. Saving here prepares a suggestion; it does not move the current meeting point.'}</Text>
+    {group && <MeetingOptions group={group} onChanged={() => { if (router.canDismiss()) router.dismissAll(); router.navigate('/'); }} />}
     <BigButton label="Simulate disaster" variant="alarm" icon="warning-outline" onPress={() => {
       if (router.canDismiss()) router.dismissAll();
       router.navigate('/');

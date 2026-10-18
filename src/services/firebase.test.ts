@@ -154,17 +154,18 @@ describe('disaster havens', () => {
     expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g2' }), { 'disasterHavens.flood': place });
     expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
   });
-  test('adoption changes only the active meeting point of the chosen group', async () => {
+  test('switching saves the active destination and usual point together for the chosen group', async () => {
     mockUpdateDoc.mockResolvedValue(undefined);
-    await expect(fb.adoptDisasterHaven('g2', place)).resolves.toBe(true);
-    expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g2' }), { meetingPlace: place });
+    const patch = { meetingPlace: place, usualMeetingPlace: { ...place, name: 'Usual' }, activeHaven: 'flood' as const };
+    await expect(fb.switchMeetingDestination('g2', patch)).resolves.toBe(true);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g2' }), patch);
   });
   test('a denied or unacknowledged save is not reported as successful', async () => {
     mockUpdateDoc.mockRejectedValueOnce(new Error('permission-denied'));
     await expect(fb.saveDisasterHaven('g1', 'flood', place)).resolves.toBe(false);
     mockUpdateDoc.mockImplementation(hang);
     const save = fb.saveDisasterHaven('g1', 'earthquake', place);
-    const adopt = fb.adoptDisasterHaven('g1', place);
+    const adopt = fb.switchMeetingDestination('g1', { meetingPlace: place, usualMeetingPlace: place, activeHaven: null });
     await jest.advanceTimersByTimeAsync(8001);
     await expect(save).resolves.toBe(false);
     await expect(adopt).resolves.toBe(false);
@@ -174,4 +175,10 @@ describe('disaster havens', () => {
     const groups = await fb.findMyGroups('u1');
     expect(groups[0].disasterHavens?.earthquake).toEqual(place);
   });
+});
+
+test('normal meeting edits reset haven mode and keep the new usual point', async () => {
+  mockUpdateDoc.mockResolvedValue(undefined);
+  await fb.setMeetingPlace('g1', place);
+  expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g1' }), { meetingPlace: place, usualMeetingPlace: place, activeHaven: null });
 });

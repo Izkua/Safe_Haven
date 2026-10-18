@@ -15,3 +15,11 @@ export function savedHaven(group: Group | null | undefined, hazard: HazardType):
 export function withSavedHaven(group: Group, hazard: HazardType, place: Place): Group {
   return { ...group, disasterHavens: { ...group.disasterHavens, [hazard]: place } };
 }
+
+export function usualMeetingPoint(group: Group): Place | null {
+  return group.activeHaven ? group.usualMeetingPlace ?? null : group.meetingPlace;
+}
+/** Preserve the usual point through any number of haven switches. */
+export function destinationPatch(group: Group, place: Place, hazard: HazardType | null): Pick<Group, 'meetingPlace' | 'usualMeetingPlace' | 'activeHaven'> {
+  return { meetingPlace: place, usualMeetingPlace: hazard ? usualMeetingPoint(group) : place, activeHaven: hazard };
+}
