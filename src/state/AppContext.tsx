@@ -2,7 +2,7 @@
 // Keeps an offline snapshot on disk so the app is useful with zero network after relaunch.
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { Alert } from 'react-native';
-import { nearestPlace } from '@/lib/geo';
+import { distanceM, formatDistance, MAX_WALK_M, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
@@ -13,7 +13,7 @@ import * as fb from '@/services/firebase';
 import * as loc from '@/services/location';
 import { loadSnapshot, saveSnapshot } from '@/services/offline';
 import { loadSavedTileRegion } from '@/services/tiles';
-import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute } from '@/services/routing';
+import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute, NoWalkingRouteError } from '@/services/routing';
 import type { Group, GroupDrill, HazardAlert, HazardType, LatLng, Member, MemberStatus, Place, Route, TileRegion } from '@/types';
 
 export const DEMO_MODE = !fb.isFirebaseConfigured;
@@ -386,6 +386,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ routingLoading: false, routingMessage: 'Waiting for your GPS location.' });
         return;
       }
+      // [UI] Too far to walk (e.g. a meeting point in another city or country): no line across the
+      // map and no request the router would fail on anyway. Say so plainly instead.
+      if (tooFarToWalk(from, target.coord)) {
+        set({ route: null, routingLoading: false,
+          routingMessage: `${target.name} is ${formatDistance(distanceM(from, target.coord))} away, too far to reach on foot. Follow official guidance, or set a closer meeting point.` });
+        return;
+      }
       const fallback = fallbackRoute(from, target, cached);
       set({ route: fallback, routeIsCached: !fallback.isStraightLine,
         routingLoading: isOnline, routingMessage: null });
@@ -397,8 +404,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const route = await fetchWalkingRoute(from, target);
         if (isCurrent()) set({ route, routeIsCached: false, routingLoading: false });
-      } catch {
-        if (isCurrent()) set({ routingLoading: false, routingMessage: fallback.isStraightLine
+      } catch (e) {
+        if (!isCurrent()) return;
+        // [UI] The router says there's no path on foot (water, closed area): retrying won't help.
+        if (e instanceof NoWalkingRouteError) {
+          set({ routingLoading: false, routingMessage: `No walking path found to ${target.name} (it may be across water). Showing the direction only.` });
+          return;
+        }
+        set({ routingLoading: false, routingMessage: fallback.isStraightLine
           ? 'Walking route unavailable. Showing straight-line direction; tap Go to retry.'
           : 'Could not refresh route. Showing saved walking route; tap Go to retry.' });
       }
@@ -408,6 +421,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // [UI] A meeting point is for a group; without one there's no one to meet.
         if (!(groupId ? s().groups.some((x) => x.id === groupId) : s().group)) {
           Alert.alert('Join a group first', 'Meeting points are shared with a group. Create or join one on the Group tab.');
+          return;
+        }
+        // [UI] Somewhere you can't walk to (another city or country) isn't a meeting point: don't save it.
+        const here = s().myLocation;
+        if (here && tooFarToWalk(here, coord)) {
+          Alert.alert(
+            'Too far to walk',
+            `That spot is ${formatDistance(distanceM(here, coord))} away. Pick a meeting point you can reach on foot (within ${formatDistance(MAX_WALK_M)}).`,
+          );
           return;
         }
         if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
@@ -468,7 +490,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const target = group
           ? hazard
             ? pickSafeTarget(hazard, myLocation, group)
-            : group.meetingPlace ?? nearestPlace(myLocation, group.safeAreas)
+            : // [UI] A meeting point too far to walk falls back to the nearest safe area you can walk to.
+              (group.meetingPlace && !tooFarToWalk(myLocation, group.meetingPlace.coord) ? group.meetingPlace : null) ??
+              nearestPlace(myLocation, reachablePlaces(myLocation, group.safeAreas)) ??
+              group.meetingPlace
           : hazard && !meetingPlaceOk(hazard)
             ? null
             : personalMeetingPlace;

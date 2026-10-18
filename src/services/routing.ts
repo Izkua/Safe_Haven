@@ -36,6 +36,14 @@ export function fallbackRoute(from: LatLng, target: Place, cached: Route | null)
     : straightLineRoute(from, target);
 }
 
+/** [UI] The router answered, but there's no path on foot (e.g. across water). Retrying won't help. */
+export class NoWalkingRouteError extends Error {
+  constructor() {
+    super('No walking path to this destination.');
+    this.name = 'NoWalkingRouteError';
+  }
+}
+
 export async function fetchWalkingRoute(from: LatLng, to: Place): Promise<Route> {
   const now = Date.now();
   if (now < nextRequestAt) throw new Error('Please wait a moment before requesting another route.');
@@ -50,6 +58,7 @@ export async function fetchWalkingRoute(from: LatLng, to: Place): Promise<Route>
     );
     if (!response.ok) throw new Error('Walking route service unavailable.');
     const data = await response.json();
+    if (data?.code === 'NoRoute') throw new NoWalkingRouteError();
     const route = data?.routes?.[0];
     const coordinates = route?.geometry?.coordinates;
     if (data?.code !== 'Ok' || route?.geometry?.type !== 'LineString' ||

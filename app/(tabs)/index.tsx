@@ -11,7 +11,7 @@ import { GroupFilter } from '@/components/GroupFilter';
 import { HoldGroupPicker, type PickOption } from '@/components/HoldGroupPicker';
 import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
-import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
+import { distanceM, formatAge, formatDistance, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
 import { onMapFocusRequest, takeMapFocus } from '@/lib/mapFocus';
 import { UW_CENTER } from '@/mocks/demo';
@@ -214,16 +214,21 @@ export default function MapScreen() {
   const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
 
   // What the sheet points at: the active route's target, else the meeting place, else the nearest safe area.
+  // [UI] A meeting point too far to walk to (another city or country) gives way to the nearest safe area
+  // you can walk to; with none, the panel still shows it, marked "too far to walk".
+  const meetingTooFar = !!meetingPlace && !!myLocation && tooFarToWalk(myLocation, meetingPlace.coord);
   const target =
     (route && { name: route.targetName, coord: route.to, label: 'Heading to' }) ??
-    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' }) ??
+    (meetingPlace && !meetingTooFar ? { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' } : null) ??
     (() => {
-      const p = myLocation && group ? nearestPlace(myLocation, group.safeAreas) : null;
+      const p = myLocation && group ? nearestPlace(myLocation, reachablePlaces(myLocation, group.safeAreas)) : null;
       return p ? { name: p.name, coord: p.coord, label: 'Nearest safe area' } : null;
-    })();
+    })() ??
+    (meetingPlace && { name: meetingPlace.name, coord: meetingPlace.coord, label: 'Meeting point' });
+  const targetTooFar = !route && !!target && !!myLocation && tooFarToWalk(myLocation, target.coord);
   const meters = route ? route.distanceM : target && myLocation ? distanceM(myLocation, target.coord) : null;
   const minutes = route && !route.isStraightLine ? route.durationS / 60 : meters !== null ? meters / WALK_MPS / 60 : null;
-  const walk = minutes !== null ? `${Math.max(1, Math.round(minutes))} min walk` : null;
+  const walk = minutes !== null && !targetTooFar ? `${Math.max(1, Math.round(minutes))} min walk` : null;
   // [UI] "Set by Sam, 5 min ago" when the panel is showing the meeting point.
   const setByLine =
     meetingPlace && (target?.label === 'Meeting point' || route?.targetId === meetingPlace.id) ? meetingSetBy(meetingPlace, myUid) : null;
@@ -238,12 +243,14 @@ export default function MapScreen() {
   // Identity of the drawn route (see the Polylines below).
   const routeKey = route ? `${route.to.latitude},${route.to.longitude}:${route.fetchedAt}:${route.points.length}` : '';
   const canRetry = routeShown && route!.isStraightLine && isOnline;
-  const goDisabled = !target || (routeShown && !canRetry);
+  const goDisabled = !target || targetTooFar || (routeShown && !canRetry);
   const goLabel = routingLoading
     ? 'Finding walking route…'
     : !target
       ? currentHidden ? 'Group hidden on map' : 'Set a meeting point first'
-      : meetingMoved
+      : targetTooFar
+        ? 'Too far to walk'
+        : meetingMoved
         ? 'Route to new meeting point'
         : canRetry
           ? 'Retry walking route'
@@ -253,7 +260,10 @@ export default function MapScreen() {
               ? 'Go to nearest safe area'
               : 'Go to meeting point';
   const summary = target
-    ? `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}`
+    ? targetTooFar
+      ? `${target.label}, ${formatDistance(meters!)} away. Too far to reach on foot; follow official guidance.`
+      : `${target.label}${meters !== null ? `, ${formatDistance(meters)} away` : ''}${walk ? ` (about ${walk})` : ''}${
+          meetingTooFar && target.label === 'Nearest safe area' ? '. Meeting point is too far to walk.' : ''}`
     : currentHidden
       ? `${group!.name} is hidden. Turn it on in the group filter to see its meeting point.`
       : group

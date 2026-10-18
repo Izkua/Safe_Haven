@@ -9,7 +9,7 @@ import { useEffect, useRef, type ComponentProps } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
-import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
+import { distanceM, formatAge, formatDistance, nearestPlace, reachablePlaces, tooFarToWalk } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
 import { requestMapFocus } from '@/lib/mapFocus';
@@ -79,10 +79,11 @@ export default function AlertScreen() {
 
   const group = state.group;
   const best: Place | null = me
-    ? a.hazard ? pickSafeTarget(a.hazard, me, group) : group ? nearestPlace(me, group.safeAreas) : null
+    ? a.hazard ? pickSafeTarget(a.hazard, me, group) : group ? nearestPlace(me, reachablePlaces(me, group.safeAreas)) : null
     : null;
   const myMeeting = group ? group.meetingPlace : state.personalMeetingPlace;
-  const meeting = myMeeting && (!a.hazard || meetingPlaceOk(a.hazard)) ? myMeeting : null;
+  // [UI] A meeting point too far to walk to isn't offered here (the map panel explains why).
+  const meeting = myMeeting && (!a.hazard || meetingPlaceOk(a.hazard)) && !(me && tooFarToWalk(me, myMeeting.coord)) ? myMeeting : null;
   const primary: Place | null = affected && best ? best : meeting;
   const dist = (p: Place) => (me ? ` · ${formatDistance(distanceM(me, p.coord))}` : '');
 

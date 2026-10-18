@@ -1,5 +1,6 @@
 import { expect, test } from '@jest/globals';
-import { bearingDeg, distanceM, lngLatToTile, nearestPlace, pointInPolygon, tilesForRegion } from './geo';
+import { bearingDeg, distanceM, lngLatToTile, MAX_WALK_M, nearestPlace, pointInPolygon, reachablePlaces, tilesForRegion, tooFarToWalk } from './geo';
+import type { Place } from '@/types';
 
 const seattle = { latitude: 47.6062, longitude: -122.3321 };
 const portland = { latitude: 45.5152, longitude: -122.6784 };
@@ -42,4 +43,18 @@ test('tile math', () => {
   const tiles = tilesForRegion(seattle, 3, 12, 14);
   expect(tiles.length).toBeGreaterThan(0);
   expect(tiles.every((t) => t.z >= 12 && t.z <= 14)).toBe(true);
+});
+
+test('too far to walk: across town is fine, Seattle → Portland and Seattle → Beijing are not', () => {
+  const seattle = { latitude: 47.6553, longitude: -122.3035 };
+  const bellevue = { latitude: 47.6101, longitude: -122.2015 }; // ~9 km
+  const portland = { latitude: 45.5152, longitude: -122.6784 }; // ~238 km
+  const beijing = { latitude: 39.9042, longitude: 116.4074 };
+  expect(tooFarToWalk(seattle, bellevue)).toBe(false);
+  expect(tooFarToWalk(seattle, portland)).toBe(true);
+  expect(tooFarToWalk(seattle, beijing)).toBe(true);
+  const near: Place = { id: 'a', name: 'Near', type: 'shelter', coord: bellevue };
+  const far: Place = { id: 'b', name: 'Far', type: 'shelter', coord: beijing };
+  expect(reachablePlaces(seattle, [near, far])).toEqual([near]);
+  expect(MAX_WALK_M).toBe(40_000);
 });
