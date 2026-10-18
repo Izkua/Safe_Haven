@@ -1,18 +1,20 @@
-// [OWNER: UI] One announcement: sender avatar, name and time, a bold headline, and an optional
+// [OWNER: UI] One announcement: sender avatar (their profile picture when they have one), name and time, a bold headline, and an optional
 // italic details line. Used in the banner and in the Group screen's recent list, where it also
 // says who has seen it (dismissed the banner) and who hasn't.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
+import { Avatar } from '@/components/Avatar';
 import { ackSummary, announcementTime } from '@/lib/announcements';
 import { useApp } from '@/state/AppContext';
 import { colors, memberColor } from '@/theme';
 import type { Announcement } from '@/types';
 
 export function AnnouncementCard({ a, showGroup = true, showSeen = false }: { a: Announcement; showGroup?: boolean; showSeen?: boolean }) {
-  const { groups, members, myUid } = useApp().state;
+  const { groups, members, myUid, myPhoto } = useApp().state;
   const group = groups.find((g) => g.id === a.groupId);
   const mine = a.senderId === myUid;
-  const initial = Array.from(a.senderName.trim())[0]?.toUpperCase() ?? '?';
+  // Looked up live (not stored on the announcement), so a new picture shows on old announcements too.
+  const photo = mine ? myPhoto : members.find((m) => m.uid === a.senderId)?.photo;
   const groupName = group?.name ?? a.groupName;
   const seenLine = showSeen && group ? seenText(ackSummary(a, group.memberIds, Object.fromEntries(members.map((m) => [m.uid, m.name])), myUid)) : null;
   return (
@@ -21,9 +23,7 @@ export function AnnouncementCard({ a, showGroup = true, showSeen = false }: { a:
       accessible
       accessibilityLabel={`${mine ? 'You' : a.senderName} announced${showGroup && groupName ? ` to ${groupName}` : ''}, ${announcementTime(a.sentAt)}: ${a.title}${a.details ? `. ${a.details}` : ''}${seenLine ? `. ${seenLine}` : ''}`}
     >
-      <View style={[styles.avatar, { backgroundColor: memberColor(a.senderId, group?.memberIds ?? []) }]}>
-        <Text style={styles.initial}>{initial}</Text>
-      </View>
+      <Avatar name={a.senderName} photo={photo} color={memberColor(a.senderId, group?.memberIds ?? [])} size={44} />
       <View style={styles.text}>
         <Text style={styles.meta} numberOfLines={1}>
           <Text style={styles.name}>{mine ? 'You' : a.senderName}</Text>
@@ -52,8 +52,6 @@ function seenText({ seen, waiting }: { seen: string[]; waiting: string[] }): str
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  initial: { fontSize: 18, fontWeight: '700', color: colors.onDanger },
   text: { flex: 1, gap: 2 },
   meta: { fontSize: 15, lineHeight: 20 },
   name: { fontWeight: '600', color: colors.text },
