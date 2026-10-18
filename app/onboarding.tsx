@@ -150,7 +150,7 @@ function GroupStep({ onDone }: { onDone: () => void }) {
   const canReachServer = state.isOnline && !!state.myUid;
   const failed = attempted && !busy;
 
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setAttempted(false);
     await action().catch(() => {});
