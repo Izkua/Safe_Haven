@@ -57,6 +57,8 @@ export interface Announcement {
   sentAt: number;
   /** uids of members who dismissed it ("seen"). Missing on announcements saved by older builds. */
   ackedBy?: string[];
+  /** Who it was sent to (group members at send time, minus the sender). Drives "seen by". */
+  recipientIds?: string[];
 }
 
 /** A practice drill shared with the whole group (stored on the group doc). */

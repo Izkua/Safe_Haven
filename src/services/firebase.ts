@@ -355,12 +355,18 @@ export async function addSafeArea(groupId: string, place: Place): Promise<void> 
 /** Newest announcements fetched per group (the phone keeps the last 10 overall). */
 export const ANNOUNCEMENTS_FETCHED = 10;
 
-/** Live latest announcements for one group, newest first. Never throws; errors are logged. */
-export function subscribeAnnouncements(groupId: string, cb: (items: Announcement[]) => void): () => void {
+/** Live latest announcements for one group sent at or after `since` (ms), newest first.
+ *  Never throws; errors are logged. */
+export function subscribeAnnouncements(groupId: string, since: number, cb: (items: Announcement[]) => void): () => void {
   const firestore = getDb();
   if (!firestore) return () => {};
   return onSnapshot(
-    query(collection(firestore, 'groups', groupId, 'announcements'), orderBy('sentAt', 'desc'), limit(ANNOUNCEMENTS_FETCHED)),
+    query(
+      collection(firestore, 'groups', groupId, 'announcements'),
+      where('sentAt', '>=', since),
+      orderBy('sentAt', 'desc'),
+      limit(ANNOUNCEMENTS_FETCHED),
+    ),
     (snap) =>
       cb(
         snap.docs.map((d) => {
@@ -375,6 +381,7 @@ export function subscribeAnnouncements(groupId: string, cb: (items: Announcement
             senderName: String(a.senderName ?? 'Someone'),
             sentAt: Number(a.sentAt ?? 0),
             ackedBy: Array.isArray(a.ackedBy) ? a.ackedBy.map(String) : [],
+            recipientIds: Array.isArray(a.recipientIds) ? a.recipientIds.map(String) : undefined,
           } satisfies Announcement;
         }),
       ),

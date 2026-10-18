@@ -18,8 +18,9 @@ export type SavedAnnouncement = Announcement & { dismissed: boolean };
 /**
  * Folds newly fetched announcements into the saved list.
  * - Never seen before + from someone else + recent → saved undismissed (banner + notification).
- * - Your own, old ones, or ones sent before this phone joined that group (`joinedAt`) → saved as
- *   already dismissed (history only), so joining a group doesn't pop up its past announcements.
+ * - Your own, or old ones → saved as already dismissed (history only).
+ * - Sent before this phone joined that group (`joinedAt`) → dropped entirely, and dropped from the
+ *   saved list too: joining a group never shows its past announcements.
  * Returns the newest KEEP_ANNOUNCEMENTS, the updated seen ids, and which ones should alert now.
  */
 export function mergeAnnouncements(
@@ -32,8 +33,9 @@ export function mergeAnnouncements(
 ): { saved: SavedAnnouncement[]; seen: string[]; alerts: SavedAnnouncement[] } {
   const seenSet = new Set(seen);
   const added: SavedAnnouncement[] = [];
+  const beforeJoin = (a: Announcement) => a.sentAt < (joinedAt[a.groupId] ?? 0) - JOIN_GRACE_MS;
   // Ones we already keep only pick up new "seen" acks (merged, so a local ack isn't lost).
-  saved = saved.map((s) => {
+  saved = saved.filter((s) => !beforeJoin(s)).map((s) => {
     const fresh = incoming.find((a) => a.id === s.id);
     if (!fresh?.ackedBy?.length) return s;
     return { ...s, ackedBy: [...new Set([...(s.ackedBy ?? []), ...fresh.ackedBy])] };
@@ -41,8 +43,9 @@ export function mergeAnnouncements(
   for (const a of incoming) {
     if (seenSet.has(a.id) || saved.some((s) => s.id === a.id)) continue;
     seenSet.add(a.id);
+    if (beforeJoin(a)) continue;
     const fromOther = a.senderId !== myUid;
-    const fresh = now - a.sentAt < BANNER_FRESH_MS && a.sentAt >= (joinedAt[a.groupId] ?? 0) - JOIN_GRACE_MS;
+    const fresh = now - a.sentAt < BANNER_FRESH_MS;
     added.push({ ...a, dismissed: !(fromOther && fresh) });
   }
   const next = [...saved, ...added].sort((x, y) => y.sentAt - x.sentAt).slice(0, KEEP_ANNOUNCEMENTS);
@@ -61,7 +64,9 @@ export function bannerAnnouncement(saved: SavedAnnouncement[]): SavedAnnouncemen
 
 /**
  * Who has seen an announcement (dismissed its banner) and who hasn't, as display names.
- * The sender is left out; you are "You". Members no longer in the group are ignored.
+ * Counts only the people it was sent to (`recipientIds`, snapshotted at send), so someone who
+ * joins later never shows as "waiting". The sender is left out; you are "You"; people who have
+ * since left the group are ignored. Older announcements without a snapshot use the current members.
  */
 export function ackSummary(
   a: Announcement,
@@ -72,8 +77,9 @@ export function ackSummary(
   const acked = new Set(a.ackedBy ?? []);
   const seen: string[] = [];
   const waiting: string[] = [];
-  for (const uid of memberIds) {
-    if (uid === a.senderId) continue;
+  const sentTo = a.recipientIds ?? memberIds;
+  for (const uid of sentTo) {
+    if (uid === a.senderId || !memberIds.includes(uid)) continue;
     const name = uid === myUid ? 'You' : (names[uid] ?? 'Someone');
     (acked.has(uid) ? seen : waiting).push(name);
   }

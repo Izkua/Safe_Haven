@@ -7,7 +7,7 @@ import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
 import { meetingPlaceOk, pickSafeTarget } from '@/lib/hazards';
-import { DETAILS_MAX, mergeAnnouncements, TITLE_MAX, type SavedAnnouncement } from '@/lib/announcements';
+import { DETAILS_MAX, JOIN_GRACE_MS, mergeAnnouncements, TITLE_MAX, type SavedAnnouncement } from '@/lib/announcements';
 import { DEMO_ANNOUNCEMENT, DEMO_GROUP, DEMO_MEMBERS, makeSimulatedAlert, UW_CENTER } from '@/mocks/demo';
 import * as alerts from '@/services/alerts';
 import { canChangeMeetingPlace, subscribeOnline } from '@/services/connectivity';
@@ -377,7 +377,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       groupJoinedAt.current = next;
       persistAnnouncements(stateRef.current.announcements);
     }
-    const unsubs = ids.map((id) => fb.subscribeAnnouncements(id, receiveAnnouncements));
+    // Only ask for announcements sent since this phone joined each group.
+    const unsubs = ids.map((id) => fb.subscribeAnnouncements(id, next[id] - JOIN_GRACE_MS, receiveAnnouncements));
     return () => unsubs.forEach((u) => u());
   }, [announcementsReady, groupIdsKey, authedUid, receiveAnnouncements, persistAnnouncements]);
 
@@ -596,6 +597,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           senderId: myUid ?? 'me',
           senderName: myName,
           sentAt: Date.now(),
+          recipientIds: target.memberIds.filter((id) => id !== (myUid ?? 'me')),
         };
         if (DEMO_MODE) {
           receiveAnnouncements([a]); // saved as yours (no banner)

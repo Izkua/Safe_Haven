@@ -38,7 +38,10 @@ service cloud.firestore {
           && request.resource.data.details is string
           && request.resource.data.details.size() <= 500
           && request.resource.data.sentAt is number
-          && !('ackedBy' in request.resource.data);
+          && !('ackedBy' in request.resource.data)
+          // Who it was sent to (drives 'seen by'); optional for older builds.
+          && (!('recipientIds' in request.resource.data)
+            || (request.resource.data.recipientIds is list && request.resource.data.recipientIds.size() <= 100));
         allow update: if signedIn() && isMember()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ackedBy'])
           && request.resource.data.ackedBy.toSet() == resource.data.get('ackedBy', []).toSet().union([request.auth.uid].toSet());

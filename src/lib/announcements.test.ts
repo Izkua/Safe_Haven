@@ -55,9 +55,16 @@ test('ack summary leaves out the sender and names you as You', () => {
   expect(r).toEqual({ seen: ['You'], waiting: ['Sis', 'Someone'] });
 });
 
-test('announcements sent before you joined the group are history, newer ones alert', () => {
+test('announcements sent before you joined the group are dropped, newer ones alert', () => {
   const joinedAt = { g: NOW - 5 * 60_000 };
-  const r = mergeAnnouncements([], [], [ann('before', 'mom', 30), ann('after', 'mom', 1)], 'me', NOW, joinedAt);
+  const kept: SavedAnnouncement[] = [{ ...ann('stale', 'mom', 60), dismissed: true }];
+  const r = mergeAnnouncements(kept, [], [ann('before', 'mom', 30), ann('after', 'mom', 1)], 'me', NOW, joinedAt);
   expect(r.alerts.map((a) => a.id)).toEqual(['after']);
-  expect(r.saved.find((a) => a.id === 'before')?.dismissed).toBe(true);
+  expect(r.saved.map((a) => a.id)).toEqual(['after']);
+});
+
+test('seen-by counts only who it was sent to, not people who joined later', () => {
+  const a = { ...ann('a', 'mom', 1), recipientIds: ['me', 'sis'], ackedBy: ['sis'] };
+  const r = ackSummary(a, ['mom', 'me', 'sis', 'newkid'], { sis: 'Sis', newkid: 'New' }, 'me');
+  expect(r).toEqual({ seen: ['Sis'], waiting: ['You'] });
 });
