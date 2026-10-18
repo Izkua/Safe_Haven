@@ -2,7 +2,7 @@
 // Secondary tasks (meeting point, join/create forms) only open when asked for, to keep the screen calm.
 // You can be in several groups: chips at the top pick the current one, or add another.
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, type ColorValue } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import { distanceM, formatAge, formatDistance } from '@/lib/geo';
 import { tap } from '@/lib/haptics';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { meetingSetBy } from '@/lib/meeting';
-import { geocodeAddress } from '@/services/location';
+import { geocodeAddress, reverseGeocode } from '@/services/location';
 import { useApp } from '@/state/AppContext';
 import { colors, groupColor, minTarget, radius, statusColor } from '@/theme';
 import type { LatLng, Member } from '@/types';
@@ -34,6 +34,20 @@ export default function GroupScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  // The meeting point's address for the header: the typed one, else the nearest one looked up
+  // from the pin (kept per spot, so a moved point never shows the old address).
+  const meetPlace = group?.meetingPlace ?? null;
+  const meetSpot = meetPlace ? `${meetPlace.coord.latitude},${meetPlace.coord.longitude}` : '';
+  const [nearest, setNearest] = useState<{ spot: string; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!meetPlace || meetPlace.address) return;
+    let alive = true;
+    reverseGeocode(meetPlace.coord).then((text) => alive && setNearest({ spot: meetSpot, text }));
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetSpot, meetPlace?.address]);
+  const meetAddress = meetPlace?.address ?? (nearest?.spot === meetSpot ? nearest.text : null);
   // Wait for the keyboard to finish opening, then bring the focused box into view.
   const scrollToInput = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
 
@@ -192,7 +206,7 @@ export default function GroupScreen() {
         {chips}
         <Text style={styles.title} accessibilityRole="header">{group.name}</Text>
         <Text style={styles.lead}>
-          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meet.address ? ` (${meet.address})` : ''}.` : 'No meeting point yet.'}
+          {count} {count === 1 ? 'person' : 'people'}. {meet ? `Meet at ${meet.name}${meetAddress && meetAddress !== meet.name ? `, ${meetAddress}` : ''}.` : 'No meeting point yet.'}
         </Text>
         {setBy && <Text style={styles.setBy}>{setBy}</Text>}
 
