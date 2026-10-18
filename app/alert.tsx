@@ -57,9 +57,9 @@ export default function AlertScreen() {
     if (router.canDismiss()) router.dismissAll();
     router.navigate('/');
   };
-  const safe = () => {
+  const setStatus = (status: 'safe' | 'need_help') => {
     stopBuzz.current();
-    actions.setStatus('safe');
+    void actions.setStatus(status);
   };
   const dismiss = async () => {
     if (endingRef.current || adopting) return;
@@ -194,7 +194,17 @@ export default function AlertScreen() {
             bg={tonal}
             fg={fg}
             style={styles.half}
-            onPress={safe}
+            selected={state.myStatus === 'safe'}
+            onPress={() => setStatus('safe')}
+          />
+          <AlertButton
+            label="I need help"
+            icon={state.myStatus === 'need_help' ? 'alert-circle' : 'alert-circle-outline'}
+            bg={tonal}
+            fg={fg}
+            style={styles.half}
+            selected={state.myStatus === 'need_help'}
+            onPress={() => setStatus('need_help')}
           />
         </View>
         {emergency ? (
@@ -218,13 +228,14 @@ export default function AlertScreen() {
   );
 }
 
-function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; style?: StyleProp<ViewStyle>; onPress: () => void }) {
+function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; selected?: boolean; style?: StyleProp<ViewStyle>; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={p.label}
+      accessibilityState={{ selected: p.selected }}
       onPress={p.onPress}
-      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, p.style, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, p.style, { borderWidth: p.selected ? 2 : 0, borderColor: p.fg, backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
     >
       <Ionicons name={p.icon} size={22} color={p.fg} />
       <Text style={[styles.btnText, { color: p.fg }]} numberOfLines={2}>{p.label}</Text>
