@@ -145,3 +145,33 @@ describe('groups', () => {
     expect(mockSetDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'users/u1' }), { groupIds: { arrayRemove: ['g1'] } }, { merge: true });
   });
 });
+
+
+describe('disaster havens', () => {
+  test('saving changes only the selected disaster in the selected group', async () => {
+    mockUpdateDoc.mockResolvedValue(undefined);
+    await expect(fb.saveDisasterHaven('g2', 'flood', place)).resolves.toBe(true);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g2' }), { 'disasterHavens.flood': place });
+    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+  });
+  test('adoption changes only the active meeting point of the chosen group', async () => {
+    mockUpdateDoc.mockResolvedValue(undefined);
+    await expect(fb.adoptDisasterHaven('g2', place)).resolves.toBe(true);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(expect.objectContaining({ path: 'groups/g2' }), { meetingPlace: place });
+  });
+  test('a denied or unacknowledged save is not reported as successful', async () => {
+    mockUpdateDoc.mockRejectedValueOnce(new Error('permission-denied'));
+    await expect(fb.saveDisasterHaven('g1', 'flood', place)).resolves.toBe(false);
+    mockUpdateDoc.mockImplementation(hang);
+    const save = fb.saveDisasterHaven('g1', 'earthquake', place);
+    const adopt = fb.adoptDisasterHaven('g1', place);
+    await jest.advanceTimersByTimeAsync(8001);
+    await expect(save).resolves.toBe(false);
+    await expect(adopt).resolves.toBe(false);
+  });
+  test('group loading restores disaster havens from Firestore', async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [{ id: 'g1', data: () => ({ name: 'Family', memberIds: ['u1'], disasterHavens: { earthquake: place } }) }] });
+    const groups = await fb.findMyGroups('u1');
+    expect(groups[0].disasterHavens?.earthquake).toEqual(place);
+  });
+});

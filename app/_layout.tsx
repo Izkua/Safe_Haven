@@ -69,7 +69,9 @@ function RootStack() {
           }}
         />
         <Stack.Screen name="compass" options={{ title: '', headerBackTitle: 'Map' }} />
-        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Practice a drill' }} />
+        <Stack.Screen name="disaster-haven" options={{ title: 'Disaster haven' }} />
+        <Stack.Screen name="haven-map" options={{ title: 'Save a meeting point' }} />
+        <Stack.Screen name="simulate" options={{ presentation: 'modal', title: 'Disaster Havens' }} />
       </Stack.Protected>
     </Stack>
     {/* [UI] Announcement banner over every screen; stays until dismissed. */}

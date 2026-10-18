@@ -5,13 +5,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
 import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
+import { savedHaven } from '@/lib/havens';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { isUserAffected } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
@@ -31,6 +32,7 @@ export default function AlertScreen() {
   const insets = useSafeAreaInsets();
   const a = state.activeAlert;
   const me = state.myLocation;
+  const [adopting, setAdopting] = useState(false);
   // Unknown location: assume affected, so the user still sees the safety steps.
   const affected = a ? (me ? isUserAffected(a, me) : true) : false;
   // Outside the area the tone drops to "watch": stay ready, no takeover.
@@ -77,7 +79,8 @@ export default function AlertScreen() {
   const nowList = affected ? info?.now ?? [a.instruction ?? a.description] : OUTSIDE_NOW;
   const cards = affected ? info?.cards ?? [] : [];
 
-  const group = state.group;
+  const group = a.groupId ? state.groups.find(g => g.id === a.groupId) ?? null : state.group;
+  const suggestion = a.source === 'simulated' && a.groupId && a.hazard ? savedHaven(group, a.hazard) : null;
   const best: Place | null = me
     ? a.hazard ? pickSafeTarget(a.hazard, me, group) : group ? nearestPlace(me, group.safeAreas) : null
     : null;
@@ -151,6 +154,16 @@ export default function AlertScreen() {
       </ScrollView>
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
+        {suggestion && group && a.hazard && <>
+          <Text style={{ color: soft, textAlign: 'center' }}>{group.name}: {suggestion.name} · your group’s saved choice</Text>
+          <BigButton label="Go to suggested meeting point" icon="flag" loading={adopting} disabled={!state.isOnline}
+            accessibilityHint="Updates the meeting point for this whole group, then opens the map"
+            onPress={() => {
+              setAdopting(true);
+              void actions.adoptDisasterHaven(group.id, a.hazard!).then(place => { if (place) go(place); }).finally(() => setAdopting(false));
+            }} />
+          {!state.isOnline && <Text style={{ color: soft }}>Reconnect to update the group meeting point.</Text>}
+        </>}
         {/* One main button: the best place for this hazard, else the meeting point. */}
         {primary && (
           <AlertButton

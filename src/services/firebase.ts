@@ -28,7 +28,7 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import type { Announcement, Group, GroupDrill, LatLng, Member, MemberStatus, Place } from '@/types';
+import type { Announcement, Group, GroupDrill, HazardType, LatLng, Member, MemberStatus, Place } from '@/types';
 
 const config = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -136,6 +136,7 @@ function toGroup(id: string, d: DocumentData): Group {
     meetingPlace: d.meetingPlace ?? null,
     safeAreas: d.safeAreas ?? [],
     drill: d.drill ?? null,
+    disasterHavens: d.disasterHavens ?? {},
   };
 }
 
@@ -394,4 +395,22 @@ export async function ackAnnouncement(groupId: string, announcementId: string, u
   const firestore = getDb();
   if (!firestore) return;
   fire('ackAnnouncement', updateDoc(doc(firestore, 'groups', groupId, 'announcements', announcementId), { ackedBy: arrayUnion(uid) }));
+}
+
+/** Only report success once the shared choice has reached the server. */
+export async function saveDisasterHaven(groupId: string, hazard: HazardType, place: Place): Promise<boolean> {
+  const firestore = getDb();
+  if (!firestore) return false;
+  try {
+    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), { [`disasterHavens.${hazard}`]: place }));
+    return true;
+  } catch { return false; }
+}
+export async function adoptDisasterHaven(groupId: string, place: Place): Promise<boolean> {
+  const firestore = getDb();
+  if (!firestore) return false;
+  try {
+    await withTimeout(updateDoc(doc(firestore, 'groups', groupId), { meetingPlace: place }));
+    return true;
+  } catch { return false; }
 }

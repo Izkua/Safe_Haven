@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Alert } from 'react-native';
+import { savedHaven, validHaven, withSavedHaven } from '@/lib/havens';
 import { nearestPlace } from '@/lib/geo';
 import { allMemberIds, upsertGroup } from '@/lib/groups';
 import { meetingMovedNotice } from '@/lib/meeting';
@@ -32,11 +33,12 @@ function meetingKey(p: Place | null | undefined): string {
 }
 
 /** The alert a group drill shows: same steps as the real thing, clearly marked as practice. */
-function drillAlert(d: GroupDrill, mine = false): HazardAlert {
+function drillAlert(d: GroupDrill, mine = false, groupId?: string): HazardAlert {
   const base = makeSimulatedAlert(d.center, d.hazard);
   return {
     ...base,
     id: d.id,
+    ...(groupId ? { groupId } : {}),
     issuedAt: d.at,
     description: mine
       ? `${base.description} Your group has been sent this drill too.`
@@ -164,7 +166,9 @@ export interface AppActions {
   toggleGroupVisible(id: string): void;
   triggerAlert(alert: HazardAlert): Promise<void>;
   /** Practice drill: shows it here and sends it to everyone in the group. */
-  startDrill(hazard: HazardType): Promise<void>;
+  startDrill(hazard: HazardType, groupId?: string): Promise<void>;
+  saveDisasterHaven(groupId: string, hazard: HazardType, coord: LatLng, name: string): Promise<boolean>;
+  adoptDisasterHaven(groupId: string, hazard: HazardType): Promise<Place | null>;
   dismissAlert(): void;
   setTiles(tiles: TileRegion | null): void;
   setPreparedOffline(route: Route, tiles: TileRegion | null): void;
@@ -321,7 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const d = group.drill;
           if (d && d.startedBy !== stateRef.current.myUid && !seenDrills.current.has(d.id) && Date.now() - d.at < DRILL_FRESH_MS) {
             seenDrills.current.add(d.id);
-            const alert = drillAlert(d);
+            const alert = drillAlert(d, false, group.id);
             set({ activeAlert: alert });
             alerts.notifyAlert(alert).catch(() => {});
           }
@@ -559,8 +563,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
         set({ activeAlert: alert });
         await alerts.notifyAlert(alert).catch(() => {});
       },
-      async startDrill(hazard) {
-        const { myUid, myName, myLocation, group } = s();
+      async saveDisasterHaven(groupId, hazard, coord, name) {
+        if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+          Alert.alert('Reconnect to save', 'Saved havens and meeting points are locked while offline.');
+          return false;
+        }
+        const g = s().groups.find(x => x.id === groupId);
+        if (!g || !s().myUid || !g.memberIds.includes(s().myUid!)) return false;
+        const place: Place = { id: `haven-${hazard}`, name: name.trim(), coord, type: 'meeting',
+          setBy: s().myUid!, setByName: s().myName, setAt: Date.now() };
+        if (!validHaven(place)) return false;
+        if (!DEMO_MODE && !(await fb.saveDisasterHaven(groupId, hazard, place))) {
+          Alert.alert('Save not confirmed', 'Could not confirm the group save. Check your connection and try again.');
+          return false;
+        }
+        const latest = s().groups.find(x => x.id === groupId);
+        if (!latest) return false;
+        dispatch({ type: 'upsertGroup', group: withSavedHaven(latest, hazard, place) });
+        return true;
+      },
+      async adoptDisasterHaven(groupId, hazard) {
+        if (!(await canChangeMeetingPlace(s().isOnline)) || !s().isOnline) {
+          Alert.alert('Meeting place locked offline', 'Reconnect to change the meeting point for your whole group.');
+          return null;
+        }
+        const g = s().groups.find(x => x.id === groupId);
+        const haven = savedHaven(g, hazard);
+        if (!g || !haven || !s().myUid || !g.memberIds.includes(s().myUid!)) return null;
+        const place: Place = { ...haven, id: 'meet', setBy: s().myUid!, setByName: s().myName, setAt: Date.now() };
+        if (!DEMO_MODE && !(await fb.adoptDisasterHaven(groupId, place))) {
+          Alert.alert('Change not confirmed', 'Could not confirm the shared meeting point. Check your connection and try again.');
+          return null;
+        }
+        const latest = s().groups.find(x => x.id === groupId);
+        if (!latest) return null;
+        seenMeetings.current.set(groupId, meetingKey(place));
+        dispatch({ type: 'upsertGroup', group: { ...latest, meetingPlace: place }, select: true });
+        return place;
+      },
+      async startDrill(hazard, groupId) {
+        const { myUid, myName, myLocation } = s();
+        const group = groupId ? s().groups.find(g => g.id === groupId) : s().group;
+        if (groupId && !group) return;
         const drill: GroupDrill = {
           id: `drill-${myUid ?? 'me'}-${Date.now()}`,
           hazard,
@@ -570,7 +614,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           at: Date.now(),
         };
         seenDrills.current.add(drill.id); // don't re-fire our own drill when the group doc echoes back
-        set({ activeAlert: drillAlert(drill, true) });
+        set({ activeAlert: drillAlert(drill, true, group?.id) });
         if (group && !DEMO_MODE) await fb.startGroupDrill(group.id, drill);
       },
       dismissAlert() {
