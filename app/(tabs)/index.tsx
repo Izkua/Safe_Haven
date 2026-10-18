@@ -13,7 +13,7 @@ import { MemberPin } from '@/components/MemberPin';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { allMemberIds, visibleMembers } from '@/lib/groups';
-import { takeMapFocus } from '@/lib/mapFocus';
+import { onMapFocusRequest, takeMapFocus } from '@/lib/mapFocus';
 import { UW_CENTER } from '@/mocks/demo';
 import { meetingSetBy } from '@/lib/meeting';
 import { geocodeAddress } from '@/services/location';
@@ -23,6 +23,8 @@ import type { LatLng, Place } from '@/types';
 
 const STALE_MS = 15 * 60_000;
 const WALK_MPS = 1.3;
+/** Re-route to a person who needs help once they've moved this far from where the route ends. */
+const FOLLOW_MIN_M = 50;
 
 export default function MapScreen() {
   const { state, actions } = useApp();
@@ -129,18 +131,35 @@ export default function MapScreen() {
     [closedOffset, open, pending],
   );
 
-  // Picked another group on the Group tab: when the Map comes back into view, center on that group's
-  // meeting point. If we're walking somewhere else, offer it in the panel ("Go to …"); never auto-route.
-  useFocusEffect(
-    useCallback(() => {
-      const f = takeMapFocus();
-      if (!f) return;
-      const { place, label } = f;
-      mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
-      const routedThere = !!route && route.to.latitude === place.coord.latitude && route.to.longitude === place.coord.longitude;
-      if (route && !routedThere) pick(place, label);
-    }, [route]),
-  );
+  // "Show this on the map" requests from other screens:
+  //  - Group tab (picked another group): center on that group's meeting point. If we're walking
+  //    somewhere else, offer it in the panel ("Go to …"); never auto-route.
+  //  - Alert screen ("Go to meeting point", showMe): frame my pin, the place and the route.
+  // Applied as soon as the request arrives when the map is mounted (the alert closes over it, and
+  // focus events weren't reliable there), else when the Map comes into view. Refs keep it current.
+  const focusState = useRef({ route, myLocation });
+  focusState.current = { route, myLocation };
+  const applyMapFocus = () => {
+    const f = takeMapFocus();
+    if (!f) return;
+    const { place, label, showMe } = f;
+    const { route: r, myLocation: me } = focusState.current;
+    const routedThere = !!r && r.to.latitude === place.coord.latitude && r.to.longitude === place.coord.longitude;
+    if (showMe && me) {
+      // Both pins, plus the route line (a walking route can bend outside the straight line between them).
+      // Bottom padding sits on top of mapPadding, which already clears the panel. Short delay so the
+      // alert's closing animation doesn't swallow the camera move.
+      const coords = [me, place.coord, ...(routedThere ? r!.points : [])];
+      setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true }), 350);
+      return;
+    }
+    mapRef.current?.animateToRegion({ ...place.coord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
+    if (r && !routedThere && !showMe) pick(place, label);
+  };
+  const applyRef = useRef(applyMapFocus);
+  applyRef.current = applyMapFocus;
+  useEffect(() => onMapFocusRequest(() => applyRef.current()), []);
+  useFocusEffect(useCallback(() => applyRef.current(), []));
 
   // Open the alert screen whenever a new alert arrives.
   useEffect(() => {
@@ -152,6 +171,44 @@ export default function MapScreen() {
   const meetingPlace = group && !currentHidden ? group.meetingPlace : null;
   // Members of the checked groups, one pin per person even if they share several groups with me.
   const shownMembers = useMemo(() => visibleMembers(members, groups, visibleGroupIds), [members, groups, visibleGroupIds]);
+
+  // [UI] Walking to someone who needs help (route id "member-<uid>", set by the banner below): follow
+  // them. When their shared location moves more than FOLLOW_MIN_M from the route's end, re-route to
+  // where they are now. Their location updates at most every ~20 m / 60 s, so this stays well
+  // within the routing service's limits.
+  const following = route?.targetId.startsWith('member-') ? members.find((m) => `member-${m.uid}` === route.targetId) : undefined;
+  useEffect(() => {
+    if (!route || !following?.location) return;
+    if (distanceM(route.to, following.location) < FOLLOW_MIN_M) return;
+    void actions.routeTo({ id: route.targetId, name: following.name, coord: following.location, type: 'custom' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [following?.location?.latitude, following?.location?.longitude]);
+
+  // [UI] "Needs help" banner: frame me and everyone who needs help (whose pin is on the map), and
+  // route me to the nearest of them. No pins to show (no location yet, or their group is unchecked
+  // in the filter): fall back to the Group tab, which lists them.
+  const frameNeedHelp = () => {
+    const helpMembers = shownMembers.filter((m) => m.status === 'need_help' && m.location);
+    const helpPins = helpMembers.map((m) => m.location!);
+    if (!helpPins.length) {
+      router.navigate('/group');
+      return;
+    }
+    // Walk to the closest person who needs help (to where they last shared their location).
+    const nearest = myLocation
+      ? helpMembers.reduce((a, b) => (distanceM(myLocation, b.location!) < distanceM(myLocation, a.location!) ? b : a))
+      : helpMembers[0];
+    const target: Place = { id: `member-${nearest.uid}`, name: nearest.name, coord: nearest.location!, type: 'custom' };
+    const alreadyThere = route?.targetId === target.id && route.to.latitude === target.coord.latitude && route.to.longitude === target.coord.longitude;
+    if (!alreadyThere) void actions.routeTo(target);
+    const coords = myLocation ? [myLocation, ...helpPins] : helpPins;
+    if (coords.length === 1) {
+      mapRef.current?.animateToRegion({ ...coords[0], latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
+    } else {
+      // Clear of the banners at the top; mapPadding already keeps pins above the bottom panel.
+      mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 170, right: 70, bottom: 70, left: 70 }, animated: true });
+    }
+  };
   // Color by position across ALL my groups (current group first) so a person keeps one color.
   const colorOrder = useMemo(() => allMemberIds(group ? [group, ...groups] : groups), [group, groups]);
   const center = myLocation ?? meetingPlace?.coord ?? UW_CENTER;
@@ -410,7 +467,7 @@ export default function MapScreen() {
             icon="alert-circle"
             title={needHelp.length === 1 ? `${needHelp[0].name} needs help` : `${needHelp.length} people need help`}
             action="Tap to see where"
-            onPress={() => router.navigate('/group')}
+            onPress={frameNeedHelp}
           />
         )}
         <OfflineBanner />
