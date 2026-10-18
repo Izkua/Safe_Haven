@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { HavenGroups } from '@/components/HavenGroups';
 import { HAZARDS } from '@/lib/hazards';
@@ -12,10 +13,12 @@ export default function DisasterHavenScreen() {
   const { state, actions } = useApp();
   const [selected, select] = useState(params.groupId ?? state.activeGroupId ?? '');
   const group = state.groups.find(g => g.id === selected) ?? state.groups[0];
+  // Android draws under the system navigation bar: keep the last line above it.
+  const { bottom } = useSafeAreaInsets();
   if (!isHazard(params.hazard)) return <Text style={{ color: colors.text }}>Choose a disaster from Disaster Havens.</Text>;
   const hazard = params.hazard;
   const place = savedHaven(group, hazard);
-  return <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 20, gap: 20 }}>
+  return <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 20, paddingBottom: 20 + bottom, gap: 20 }}>
     <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>{HAZARDS[hazard].label} haven</Text>
     <Text style={{ fontSize: 17, color: colors.muted }}>Choose which group this saved location belongs to.</Text>
     <HavenGroups groups={state.groups} selected={group?.id ?? ''} onSelect={select} />

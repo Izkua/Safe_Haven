@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { HavenGroups } from '@/components/HavenGroups';
 import { HAZARD_TYPES, HAZARDS } from '@/lib/hazards';
@@ -15,12 +16,14 @@ export default function SimulateScreen() {
   const [selected, select] = useState(state.activeGroupId ?? '');
   const group = state.groups.find(g => g.id === selected) ?? state.groups[0];
   const [hazard, setHazard] = useState<HazardType>('earthquake');
+  // Android draws under the system navigation bar: keep the last line above it.
+  const { bottom } = useSafeAreaInsets();
   const simulate = () => {
     if (router.canDismiss()) router.dismissAll();
     router.navigate('/');
     void actions.startDrill(hazard, group?.id);
   };
-  return <ScrollView style={styles.screen} contentContainerStyle={{ padding: 20, gap: 12 }}>
+  return <ScrollView style={styles.screen} contentContainerStyle={{ padding: 20, paddingBottom: 20 + bottom, gap: 12 }}>
     <Text style={styles.hint}>Choose a group, then a disaster to prepare a haven. Your current meeting point stays unchanged until you use the suggestion.</Text>
     <HavenGroups groups={state.groups} selected={group?.id ?? ''} onSelect={select} />
     {!group && <Text style={styles.hint}>Join or create a group on the Group tab to save shared havens. You can still practice a disaster.</Text>}
