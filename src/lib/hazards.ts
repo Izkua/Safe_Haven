@@ -2,7 +2,7 @@
 // Steps follow Ready.gov / NWS / USGS public guidance, shortened for a phone screen.
 import type Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
-import { distanceM } from '@/lib/geo';
+import { distanceM, tooFarToWalk } from '@/lib/geo';
 import type { Group, HazardType, LatLng, Place, PlaceType } from '@/types';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -230,7 +230,8 @@ export function pickSafeTarget(hazard: HazardType, from: LatLng, group: Group | 
   const { preferred, avoid } = HAZARDS[hazard];
   const candidates: Place[] = [...group.safeAreas];
   if (group.meetingPlace) candidates.push(group.meetingPlace);
-  const usable = candidates.filter((p) => !avoid.includes(p.type));
+  // [UI] Never pick a place too far to walk to (e.g. a meeting point in another city).
+  const usable = candidates.filter((p) => !avoid.includes(p.type) && !tooFarToWalk(from, p.coord));
   if (!usable.length) return null;
 
   const rank = (p: Place) => {

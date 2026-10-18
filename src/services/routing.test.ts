@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
-import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute, straightLineRoute } from './routing';
+import { createRouteRequestGuard, fallbackRoute, fetchWalkingRoute, NoWalkingRouteError, straightLineRoute } from './routing';
 import type { Place } from '@/types';
 
 const from = { latitude: 47.65, longitude: -122.31 };
@@ -23,7 +23,7 @@ test('pedestrian request converts longitude/latitude and preserves route distanc
 });
 test('unavailable, malformed and failed requests reject for caller fallback', async () => {
   respond({ code: 'NoRoute' });
-  await expect(fetchWalkingRoute(from, target)).rejects.toThrow();
+  await expect(fetchWalkingRoute(from, target)).rejects.toBeInstanceOf(NoWalkingRouteError);
   jest.advanceTimersByTime(1100);
   respond({ ...payload, routes: [{ ...payload.routes[0], geometry: { type: 'LineString', coordinates: [[999, 47], [0, 0]] } }] });
   await expect(fetchWalkingRoute(from, target)).rejects.toThrow();

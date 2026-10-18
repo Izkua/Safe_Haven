@@ -38,6 +38,21 @@ export function pointInPolygon(p: LatLng, ring: LatLng[]): boolean {
   return inside;
 }
 
+/**
+ * [UI] Farther than this (~8 h on foot) isn't a walk you can make in an emergency, and the free foot
+ * router fails or times out on such requests (e.g. Seattle → Beijing). Don't route; say it's too far.
+ */
+export const MAX_WALK_M = 40_000;
+
+export function tooFarToWalk(from: LatLng, to: LatLng): boolean {
+  return distanceM(from, to) > MAX_WALK_M;
+}
+
+/** Places you could actually walk to from here. */
+export function reachablePlaces(from: LatLng, places: Place[]): Place[] {
+  return places.filter((p) => !tooFarToWalk(from, p.coord));
+}
+
 export function nearestPlace(from: LatLng, places: Place[]): Place | null {
   let best: Place | null = null;
   let bestD = Infinity;
