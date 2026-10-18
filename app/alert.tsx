@@ -1,28 +1,30 @@
 // [OWNER: ALERTS] Shown when an alert affects the user: what to do now, then one tap to route to safety.
 // Design: urgency ladder — watch (amber band) · warning (red header) · emergency (full red takeover).
+// Body: a "Right now" card with the 2 most urgent actions, then short icon cards (bullets, not steps:
+// the advice isn't in a fixed order). Full step-by-step guidance stays on the First aid tab.
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, type ComponentProps } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BigButton } from '@/components/BigButton';
 import { distanceM, formatAge, formatDistance, nearestPlace } from '@/lib/geo';
 import { buzzFor } from '@/lib/haptics';
-import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_STEPS, pickSafeTarget } from '@/lib/hazards';
+import { HAZARDS, meetingPlaceOk, OFFICIAL_NOTE, OUTSIDE_NOW, pickSafeTarget } from '@/lib/hazards';
 import { requestMapFocus } from '@/lib/mapFocus';
 import { isUserAffected } from '@/services/alerts';
 import { useApp } from '@/state/AppContext';
 import { colors, minTarget, radius, urgencyFor } from '@/theme';
 import type { HazardAlert, Place } from '@/types';
 
-const isQuake = (a: HazardAlert) => a.hazard === 'earthquake' || a.source === 'usgs' || /earthquake/i.test(a.title);
-
-/** Big imperative headline: the one thing to do right now. */
+/** Headline: the alert's own title (e.g. "Earthquake Warning"), the same pattern for every hazard. */
 function headline(a: HazardAlert): string {
-  if (isQuake(a) && a.severity !== 'minor' && a.severity !== 'moderate') return 'Drop.\nCover.\nHold on.';
   return a.title.replace(/\s*\(SIMULATED\)\s*/i, '');
 }
+
+/** Text on the cream "Right now" card (cream in both appearances, so always dark text). */
+const INK = '#2A2118';
 
 export default function AlertScreen() {
   const { state, actions } = useApp();
@@ -71,7 +73,9 @@ export default function AlertScreen() {
   }
 
   const info = a.hazard ? HAZARDS[a.hazard] : null;
-  const steps = affected ? info?.steps ?? (a.instruction ? [a.instruction] : []) : OUTSIDE_STEPS;
+  // Inside the area: the hazard's 2 most urgent actions, then its icon cards. Outside: stay-ready bullets only.
+  const nowList = affected ? info?.now ?? [a.instruction ?? a.description] : OUTSIDE_NOW;
+  const cards = affected ? info?.cards ?? [] : [];
 
   const group = state.group;
   const best: Place | null = me
@@ -79,7 +83,8 @@ export default function AlertScreen() {
     : null;
   const myMeeting = group ? group.meetingPlace : state.personalMeetingPlace;
   const meeting = myMeeting && (!a.hazard || meetingPlaceOk(a.hazard)) ? myMeeting : null;
-  const dist = (p: Place) => (me ? ` (${formatDistance(distanceM(me, p.coord))})` : '');
+  const primary: Place | null = affected && best ? best : meeting;
+  const dist = (p: Place) => (me ? ` · ${formatDistance(distanceM(me, p.coord))}` : '');
 
   const emergency = level === 'emergency';
   const onRed = emergency || level === 'warning';
@@ -112,65 +117,64 @@ export default function AlertScreen() {
         <View style={styles.metaRow}>
           {info && <Ionicons name={info.icon} size={20} color={onHeader} />}
           <Text style={[styles.meta, { color: onHeader }]}>
-            {a.source === 'simulated' ? 'Drill: ' : ''}{info ? `${info.label}, ` : ''}{levelName.toLowerCase()}, {when}
+            {a.source === 'simulated'
+              ? `Drill: ${info ? info.simShort : 'practice alert'}`
+              : `${info ? `${info.label}, ` : ''}${levelName.toLowerCase()}, ${when}`}
           </Text>
         </View>
       </View>
 
       <ScrollView style={styles.flex} contentContainerStyle={styles.body}>
-        <Text style={[styles.desc, { color: fg }]}>{a.description}</Text>
-
-        <View style={styles.areaRow}>
-          <Ionicons
-            name={affected ? 'alert-circle' : 'checkmark-circle'}
-            size={22}
-            color={affected ? (emergency ? colors.onDanger : colors.dangerText) : colors.safe}
-          />
-          <Text style={[styles.area, { color: affected ? (emergency ? colors.onDanger : colors.dangerText) : colors.safe }]}>
-            {affected ? 'You are in the affected area' : 'You are outside the affected area'}
+        {/* The most urgent actions, in a card that stands out from everything else. */}
+        <View style={[styles.nowCard, { backgroundColor: emergency ? colors.onDanger : colors.card }]}>
+          <Text style={[styles.nowLabel, { color: emergency ? colors.danger : affected ? colors.dangerText : colors.safe }]}>
+            {affected ? 'Right now' : 'You’re outside the affected area'}
           </Text>
+          {nowList.map((t, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Text style={[styles.bullet, { color: emergency ? INK : colors.text }]}>{'\u2022'}</Text>
+              <Text style={[styles.nowText, { color: emergency ? INK : colors.text }]}>{t}</Text>
+            </View>
+          ))}
         </View>
 
-        <Text style={[styles.section, { color: fg }]}>{affected ? 'What to do now' : 'Stay ready'}</Text>
-        {steps.map((s, i) => (
-          <View key={i} style={styles.step}>
-            <Text style={[styles.stepNum, { color: fg }]}>{i + 1}.</Text>
-            <Text style={[styles.stepText, { color: fg }]}>{s}</Text>
+        {cards.map((c, i) => (
+          <View key={i} style={[styles.card, { backgroundColor: tonal }]}>
+            <View style={[styles.cardIcon, { backgroundColor: emergency ? colors.onDanger : colors.danger }]}>
+              <Ionicons name={c.icon} size={18} color={emergency ? colors.danger : colors.onDanger} />
+            </View>
+            <Text style={[styles.cardText, { color: fg }]}>{c.text}</Text>
           </View>
         ))}
 
-        {affected && info && <Text style={[styles.moveNote, { color: fg }]}>{info.moveNote}</Text>}
         <Text style={[styles.fine, { color: soft }]}>{OFFICIAL_NOTE} Source: {source}.</Text>
       </ScrollView>
 
       <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
-        {affected && best && (
+        {/* One main button: the best place for this hazard, else the meeting point. */}
+        {primary && (
           <AlertButton
-            label={`Go to ${best.name}${dist(best)}`}
+            label={primary === best ? `${info?.goPrefix ?? 'Go to'} ${primary.name}${dist(primary)}` : `Go to meeting point: ${primary.name}${dist(primary)}`}
             icon="navigate"
             bg={emergency ? colors.onDanger : colors.primary}
             fg={emergency ? colors.danger : colors.onPrimary}
             tall
-            onPress={() => go(best)}
+            onPress={() => go(primary)}
           />
         )}
-        {meeting && meeting.id !== best?.id && (
+        <View style={styles.btnRow}>
           <AlertButton
-            label={`Go to meeting point: ${meeting.name}${dist(meeting)}`}
-            icon="flag"
-            bg={affected && best ? tonal : emergency ? colors.onDanger : colors.primary}
-            fg={affected && best ? fg : emergency ? colors.danger : colors.onPrimary}
-            tall={!(affected && best)}
-            onPress={() => go(meeting)}
+            label={state.myStatus === 'safe' ? 'Marked safe' : 'I’m safe'}
+            icon={state.myStatus === 'safe' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+            bg={tonal}
+            fg={fg}
+            style={styles.half}
+            onPress={safe}
           />
-        )}
-        <AlertButton
-          label={state.myStatus === 'safe' ? 'Marked as safe' : 'I’m safe'}
-          icon={state.myStatus === 'safe' ? 'checkmark-circle' : 'checkmark-circle-outline'}
-          bg={tonal}
-          fg={fg}
-          onPress={safe}
-        />
+          {meeting && meeting !== primary && (
+            <AlertButton label="Meeting point" icon="flag" bg={tonal} fg={fg} style={styles.half} onPress={() => go(meeting)} />
+          )}
+        </View>
         {emergency ? (
           <Pressable
             accessibilityRole="button"
@@ -191,13 +195,13 @@ export default function AlertScreen() {
   );
 }
 
-function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; onPress: () => void }) {
+function AlertButton(p: { label: string; icon: ComponentProps<typeof Ionicons>['name']; bg: ColorValue; fg: ColorValue; tall?: boolean; style?: StyleProp<ViewStyle>; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={p.label}
       onPress={p.onPress}
-      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [styles.btn, p.tall && styles.btnTall, p.style, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}
     >
       <Ionicons name={p.icon} size={22} color={p.fg} />
       <Text style={[styles.btnText, { color: p.fg }]} numberOfLines={2}>{p.label}</Text>
@@ -210,18 +214,20 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 18, gap: 8 },
   headline: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
-  headlineXL: { fontSize: 44, lineHeight: 50, fontWeight: '700' },
+  headlineXL: { fontSize: 40, lineHeight: 44, fontWeight: '800', letterSpacing: -0.5 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   meta: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 12 },
-  desc: { fontSize: 17, lineHeight: 24 },
-  areaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  area: { flex: 1, fontSize: 17, fontWeight: '600' },
-  section: { marginTop: 8, fontSize: 20, lineHeight: 25, fontWeight: '600' },
-  step: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  stepNum: { width: 24, fontSize: 17, lineHeight: 24, fontWeight: '600' },
-  stepText: { flex: 1, fontSize: 17, lineHeight: 24 },
-  moveNote: { fontSize: 17, lineHeight: 24, fontWeight: '600' },
+  nowCard: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 6 },
+  nowLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2 },
+  bulletRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  bullet: { fontSize: 18, lineHeight: 24, fontWeight: '800' },
+  nowText: { flex: 1, fontSize: 18, lineHeight: 24, fontWeight: '700' },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  cardIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  cardText: { flex: 1, fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
   fine: { marginTop: 4, fontSize: 13, lineHeight: 18 },
   actions: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
   btn: { minHeight: minTarget, borderRadius: radius, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
